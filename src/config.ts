@@ -56,7 +56,7 @@ export function getConfig(): TodoConfig {
   });
 
   // Priority: CLI args > Environment variables > Defaults
-  let apiBaseUrl = args['api-base-url'] || args['base-url'] || process.env.TODO_API_BASE_URL || 'http://localhost:50110/todo-for-ai/api/v1';
+  let apiBaseUrl = args['api-base-url'] || args['base-url'] || process.env.TODO_API_BASE_URL || 'https://todo4ai.org/todo-for-ai/api/v1';
 
   // Normalize baseURL - ensure it doesn't end with a slash for consistent axios behavior
   if (apiBaseUrl.endsWith('/')) {
@@ -120,6 +120,10 @@ export function validateConfig(config: TodoConfig): void {
 
   if (!config.apiBaseUrl.startsWith('http')) {
     throw new Error('TODO_API_BASE_URL must be a valid HTTP URL');
+  }
+
+  if (!config.apiToken) {
+    throw new Error('API token is required. Please provide --api-token argument or set TODO_API_TOKEN environment variable');
   }
 
   if (config.apiTimeout < 1000) {

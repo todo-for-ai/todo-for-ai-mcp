@@ -40,14 +40,14 @@ npm link
 Create a `.env` file or set environment variables:
 
 ```bash
-# Required: Todo API base URL
+# Required: API authentication token
+TODO_API_TOKEN=your-api-token
+
+# Optional: Todo API base URL (default: https://todo4ai.org/todo-for-ai/api/v1)
 TODO_API_BASE_URL=http://localhost:50110/todo-for-ai/api/v1
 
 # Optional: API timeout in milliseconds (default: 10000)
 TODO_API_TIMEOUT=10000
-
-# Optional: API authentication token
-TODO_API_TOKEN=your-api-token
 
 # Optional: Log level (default: info)
 LOG_LEVEL=info
@@ -62,9 +62,9 @@ Alternatively, create a `config.json` file:
 
 ```json
 {
-  "apiBaseUrl": "http://localhost:50110",
+  "apiBaseUrl": "https://todo4ai.org/todo-for-ai/api/v1",
   "apiTimeout": 10000,
-  "apiToken": "",
+  "apiToken": "your-api-token",
   "logLevel": "info"
 }
 ```
@@ -95,25 +95,27 @@ The MCP server supports configuration through both command line arguments and en
 
 | Configuration | CLI Argument | Environment Variable | Default |
 |---------------|--------------|---------------------|---------|
-| API Base URL | `--api-base-url`, `--base-url` | `TODO_API_BASE_URL` | `http://localhost:50110/todo-for-ai/api/v1` |
-| API Token | `--api-token`, `--token` | `TODO_API_TOKEN` | None |
+| API Base URL | `--api-base-url`, `--base-url` | `TODO_API_BASE_URL` | `https://todo4ai.org/todo-for-ai/api/v1` |
+| API Token | `--api-token`, `--token` | `TODO_API_TOKEN` | **Required** |
 | API Timeout | `--api-timeout`, `--timeout` | `TODO_API_TIMEOUT` | `10000` (ms) |
 | Log Level | `--log-level` | `LOG_LEVEL` | `info` |
 
 **Examples:**
 
 ```bash
-# Using command line arguments
-todo-for-ai-mcp --api-base-url http://localhost:50110/todo-for-ai/api/v1 --api-token your-token --log-level debug
+# Using command line arguments (API token is required)
+todo-for-ai-mcp --api-token your-token --log-level debug
 
 # Using environment variables
-export TODO_API_BASE_URL="http://localhost:50110/todo-for-ai/api/v1"
 export TODO_API_TOKEN="your-token"
 export LOG_LEVEL="info"
 todo-for-ai-mcp
 
+# Using custom API base URL
+todo-for-ai-mcp --api-base-url http://localhost:50110/todo-for-ai/api/v1 --api-token your-token
+
 # Mixed approach (CLI args override env vars)
-TODO_API_BASE_URL=http://localhost:50110 todo-for-ai-mcp --log-level debug
+TODO_API_TOKEN=your-token todo-for-ai-mcp --log-level debug
 ```
 
 ### IDE Integration
@@ -127,18 +129,32 @@ Add to your Claude Desktop configuration file (`~/Library/Application Support/Cl
   "mcpServers": {
     "todo-for-ai": {
       "command": "npx",
+      "args": [
+        "-y", "@todo-for-ai/mcp@latest",
+        "--api-token", "your-api-token-here"
+      ]
+    }
+  }
+}
+```
+
+**Alternative with environment variables:**
+
+```json
+{
+  "mcpServers": {
+    "todo-for-ai": {
+      "command": "npx",
       "args": ["-y", "@todo-for-ai/mcp@latest"],
       "env": {
-        "TODO_API_BASE_URL": "http://localhost:50110/todo-for-ai/api/v1",
-        "TODO_API_TOKEN": "your-api-token-here",
-        "LOG_LEVEL": "info"
+        "TODO_API_TOKEN": "your-api-token-here"
       }
     }
   }
 }
 ```
 
-**Alternative with command line arguments:**
+**For local development (custom API base URL):**
 
 ```json
 {
@@ -148,8 +164,7 @@ Add to your Claude Desktop configuration file (`~/Library/Application Support/Cl
       "args": [
         "-y", "@todo-for-ai/mcp@latest",
         "--api-base-url", "http://localhost:50110/todo-for-ai/api/v1",
-        "--api-token", "your-api-token-here",
-        "--log-level", "info"
+        "--api-token", "your-api-token-here"
       ]
     }
   }
@@ -165,12 +180,10 @@ Add to your Cursor configuration:
   "mcpServers": {
     "todo-for-ai": {
       "command": "npx",
-      "args": ["-y", "@todo-for-ai/mcp@latest"],
-      "env": {
-        "TODO_API_BASE_URL": "http://localhost:50110/todo-for-ai/api/v1",
-        "TODO_API_TOKEN": "your-api-token-here",
-        "LOG_LEVEL": "info"
-      }
+      "args": [
+        "-y", "@todo-for-ai/mcp@latest",
+        "--api-token", "your-api-token-here"
+      ]
     }
   }
 }
