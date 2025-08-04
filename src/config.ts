@@ -1,12 +1,79 @@
 import { config } from 'dotenv';
 import { TodoConfig } from './types.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 // Load environment variables
 config();
 
+// Get package.json for version info
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJsonPath = join(__dirname, '..', 'package.json');
+const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+
+function showHelp(): void {
+  console.log(`
+${packageJson.name} v${packageJson.version}
+${packageJson.description}
+
+Usage:
+  todo-for-ai-mcp [options]
+  npx @todo-for-ai/mcp [options]
+
+Options:
+  --api-base-url <url>    API base URL (default: https://todo4ai.org/todo-for-ai/api/v1)
+  --base-url <url>        Alias for --api-base-url
+  --api-token <token>     API authentication token (required)
+  --token <token>         Alias for --api-token
+  --api-timeout <ms>      API request timeout in milliseconds (default: 10000)
+  --timeout <ms>          Alias for --api-timeout
+  --log-level <level>     Log level: debug, info, warn, error (default: info)
+  --help                  Show this help message
+  --version               Show version information
+
+Environment Variables:
+  TODO_API_BASE_URL       API base URL
+  TODO_API_TOKEN          API authentication token
+  TODO_API_TIMEOUT        API request timeout in milliseconds
+  LOG_LEVEL               Log level
+
+Configuration Priority:
+  Command line arguments > Environment variables > Defaults
+
+Examples:
+  # Using command line arguments
+  todo-for-ai-mcp --api-token your-token --log-level debug
+
+  # Using environment variables
+  TODO_API_TOKEN=your-token LOG_LEVEL=debug todo-for-ai-mcp
+
+  # Mixed configuration (CLI args override env vars)
+  TODO_API_TOKEN=your-token todo-for-ai-mcp --log-level debug
+
+For more information, visit: https://github.com/todo-for-ai/todo-for-ai
+`);
+}
+
+function showVersion(): void {
+  console.log(`${packageJson.name} v${packageJson.version}`);
+}
+
 function parseArgs(): { [key: string]: string } {
   const args: { [key: string]: string } = {};
   const argv = process.argv.slice(2);
+
+  // Check for help or version first
+  if (argv.includes('--help') || argv.includes('-h')) {
+    showHelp();
+    process.exit(0);
+  }
+
+  if (argv.includes('--version') || argv.includes('-v')) {
+    showVersion();
+    process.exit(0);
+  }
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];

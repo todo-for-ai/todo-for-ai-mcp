@@ -100,9 +100,24 @@ The MCP server supports configuration through both command line arguments and en
 | API Timeout | `--api-timeout`, `--timeout` | `TODO_API_TIMEOUT` | `10000` (ms) |
 | Log Level | `--log-level` | `LOG_LEVEL` | `info` |
 
+**Additional Options:**
+
+| Option | CLI Argument | Description |
+|--------|--------------|-------------|
+| Help | `--help`, `-h` | Show help message and exit |
+| Version | `--version`, `-v` | Show version information and exit |
+
 **Examples:**
 
 ```bash
+# Show help information
+todo-for-ai-mcp --help
+todo-for-ai-mcp -h
+
+# Show version information
+todo-for-ai-mcp --version
+todo-for-ai-mcp -v
+
 # Using command line arguments (API token is required)
 todo-for-ai-mcp --api-token your-token --log-level debug
 
