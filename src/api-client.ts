@@ -585,6 +585,32 @@ export class TodoApiClient {
   }
 
   /**
+   * List all projects that the current user has access to
+   */
+  async listUserProjects(args: any): Promise<any> {
+    logger.info(`Listing user projects with filters: ${JSON.stringify(args)}`);
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.post<any>('mcp/call', {
+        name: 'list_user_projects',
+        arguments: {
+          status_filter: args.status_filter || 'active',
+          include_stats: args.include_stats || false,
+        },
+      });
+
+      const result = response.data;
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      logger.info(`Found ${result.total || 0} projects for user`);
+      return result;
+    }, `listUserProjects(${JSON.stringify(args)})`);
+  }
+
+  /**
    * Test connection to the Todo API
    */
   async testConnection(): Promise<boolean> {

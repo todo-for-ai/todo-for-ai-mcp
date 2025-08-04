@@ -249,6 +249,27 @@ export class TodoMcpServer {
             required: [],
           },
         },
+        {
+          name: 'list_user_projects',
+          description: 'List all projects that the current user has access to, with proper permission checking',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              status_filter: {
+                type: 'string',
+                enum: ['active', 'archived', 'all'],
+                description: 'Filter projects by status (default: active)',
+                default: 'active',
+              },
+              include_stats: {
+                type: 'boolean',
+                description: 'Whether to include project statistics (default: false)',
+                default: false,
+              },
+            },
+            required: [],
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -345,6 +366,16 @@ export class TodoMcpServer {
             result = await this.handleGetProjectInfo(args);
             break;
 
+          case 'list_user_projects':
+            logger.info(`[MCP_SERVER] Executing list_user_projects`, {
+              requestId,
+              instanceId: this.instanceId,
+              statusFilter: args?.status_filter,
+              includeStats: args?.include_stats
+            });
+            result = await this.handleListUserProjects(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -352,7 +383,7 @@ export class TodoMcpServer {
               instanceId: this.instanceId,
               toolName: name,
               error: error.message,
-              availableTools: ['get_project_tasks_by_name', 'get_task_by_id', 'submit_task_feedback', 'create_task', 'get_project_info']
+              availableTools: ['get_project_tasks_by_name', 'get_task_by_id', 'submit_task_feedback', 'create_task', 'get_project_info', 'list_user_projects']
             });
             throw error;
         }
@@ -573,6 +604,118 @@ export class TodoMcpServer {
       });
 
       logger.error('[MCP_SERVER] ========== HANDLER END: handleGetProjectInfo (ERROR) ==========', {
+        handlerId,
+        instanceId: this.instanceId,
+        success: false,
+        totalDuration: `${handlerDuration}ms`,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+
+      throw error;
+    }
+  }
+
+  private async handleListUserProjects(args: any) {
+    const handlerStartTime = Date.now();
+    const handlerId = `handler-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+
+    logger.info('[MCP_SERVER] ========== HANDLER START: handleListUserProjects ==========', {
+      handlerId,
+      instanceId: this.instanceId,
+      args,
+      hasStatusFilter: !!args?.status_filter,
+      hasIncludeStats: !!args?.include_stats,
+      timestamp: new Date().toISOString()
+    });
+
+    logger.debug('[MCP_SERVER] handleListUserProjects input validation', {
+      handlerId,
+      statusFilter: args?.status_filter,
+      includeStats: args?.include_stats,
+      argsType: typeof args,
+      argsKeys: args ? Object.keys(args) : []
+    });
+
+    try {
+      logger.info('[MCP_SERVER] handleListUserProjects calling API client...', {
+        handlerId,
+        instanceId: this.instanceId,
+        apiMethod: 'listUserProjects',
+        args
+      });
+
+      const apiCallStartTime = Date.now();
+      const result = await this.apiClient.listUserProjects(args);
+      const apiCallDuration = Date.now() - apiCallStartTime;
+
+      logger.info('[MCP_SERVER] handleListUserProjects API call successful', {
+        handlerId,
+        instanceId: this.instanceId,
+        apiCallDuration: `${apiCallDuration}ms`,
+        projectsCount: result.total || 0,
+        statusFilter: result.status_filter,
+        includeStats: result.include_stats,
+        resultSize: JSON.stringify(result).length,
+        resultKeys: Object.keys(result)
+      });
+
+      logger.debug('[MCP_SERVER] handleListUserProjects API result details', {
+        handlerId,
+        result: result,
+        projects: result.projects
+      });
+
+      logger.debug('[MCP_SERVER] handleListUserProjects preparing response...', {
+        handlerId,
+        responseFormat: 'MCP tool response',
+        contentType: 'text',
+        willStringify: true
+      });
+
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+
+      const handlerDuration = Date.now() - handlerStartTime;
+      logger.info('[MCP_SERVER] handleListUserProjects response prepared', {
+        handlerId,
+        instanceId: this.instanceId,
+        handlerDuration: `${handlerDuration}ms`,
+        responseSize: JSON.stringify(response).length,
+        contentType: response.content[0]?.type,
+        contentCount: response.content.length,
+        textLength: response.content[0]?.text?.length
+      });
+
+      logger.info('[MCP_SERVER] ========== HANDLER END: handleListUserProjects ==========', {
+        handlerId,
+        instanceId: this.instanceId,
+        success: true,
+        totalDuration: `${handlerDuration}ms`,
+        timestamp: new Date().toISOString()
+      });
+
+      return response;
+    } catch (error) {
+      const handlerDuration = Date.now() - handlerStartTime;
+
+      logger.error('[MCP_SERVER] handleListUserProjects failed', {
+        handlerId,
+        instanceId: this.instanceId,
+        handlerDuration: `${handlerDuration}ms`,
+        args,
+        error: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+
+      logger.error('[MCP_SERVER] ========== HANDLER END: handleListUserProjects (ERROR) ==========', {
         handlerId,
         instanceId: this.instanceId,
         success: false,
