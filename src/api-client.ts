@@ -52,11 +52,14 @@ export class TodoApiClient {
       tokenPrefix: config.apiToken ? config.apiToken.substring(0, 8) + '...' : 'none'
     });
 
-    // Normalize baseURL - ensure it doesn't end with a slash for consistent axios behavior
+    // Normalize baseURL - ensure it ends with exactly one slash for proper URL joining
     let normalizedBaseUrl = config.apiBaseUrl;
+    // Remove trailing slash if present
     if (normalizedBaseUrl.endsWith('/')) {
       normalizedBaseUrl = normalizedBaseUrl.slice(0, -1);
     }
+    // Add exactly one trailing slash
+    normalizedBaseUrl = normalizedBaseUrl + '/';
 
     this.client = axios.create({
       baseURL: normalizedBaseUrl,
@@ -297,7 +300,7 @@ export class TodoApiClient {
     logger.info(`Getting tasks for project: ${args.project_name}`);
 
     return this.executeWithRetry(async () => {
-      const response = await this.client.post<any>('mcp/call', {
+      const response = await this.client.post<any>(this.normalizePath('mcp/call'), {
         name: 'get_project_tasks_by_name',
         arguments: {
           project_name: args.project_name,
@@ -323,7 +326,7 @@ export class TodoApiClient {
     logger.info(`Getting task details for ID: ${args.task_id}`);
     
     try {
-      const response = await this.client.post<Task>('mcp/call', {
+      const response = await this.client.post<Task>(this.normalizePath('mcp/call'), {
         name: 'get_task_by_id',
         arguments: {
           task_id: args.task_id,
@@ -351,7 +354,7 @@ export class TodoApiClient {
     logger.info(`Submitting feedback for task ${args.task_id} in project ${args.project_name}`);
     
     try {
-      const response = await this.client.post<any>('mcp/call', {
+      const response = await this.client.post<any>(this.normalizePath('mcp/call'), {
         name: 'submit_task_feedback',
         arguments: {
           task_id: args.task_id,
@@ -383,7 +386,7 @@ export class TodoApiClient {
     logger.info(`Creating task "${args.title}" in project ${args.project_id}`);
 
     try {
-      const response = await this.client.post<Task>('mcp/call', {
+      const response = await this.client.post<Task>(this.normalizePath('mcp/call'), {
         name: 'create_task',
         arguments: {
           project_id: args.project_id,
@@ -489,7 +492,7 @@ export class TodoApiClient {
         timestamp: new Date().toISOString()
       });
 
-      const response = await this.client.post<Project>('mcp/call', requestPayload);
+      const response = await this.client.post<Project>(this.normalizePath('mcp/call'), requestPayload);
       const httpCallDuration = Date.now() - httpCallStartTime;
 
       logger.info('[API_CLIENT] HTTP response received', {
@@ -591,7 +594,7 @@ export class TodoApiClient {
     logger.info(`Listing user projects with filters: ${JSON.stringify(args)}`);
 
     return this.executeWithRetry(async () => {
-      const response = await this.client.post<any>('mcp/call', {
+      const response = await this.client.post<any>(this.normalizePath('mcp/call'), {
         name: 'list_user_projects',
         arguments: {
           status_filter: args.status_filter || 'active',
@@ -656,5 +659,13 @@ export class TodoApiClient {
       logger.warn('Could not read package version:', error);
       return '1.0.8'; // Use current version as fallback
     }
+  }
+
+  /**
+   * Normalize URL path to ensure proper joining with baseURL
+   * Removes leading slash to avoid double slashes when joining with baseURL that ends with /
+   */
+  private normalizePath(path: string): string {
+    return path.startsWith('/') ? path.slice(1) : path;
   }
 }
