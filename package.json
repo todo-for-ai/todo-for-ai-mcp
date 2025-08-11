@@ -1,6 +1,6 @@
 {
   "name": "@todo-for-ai/mcp",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Model Context Protocol server for Todo for AI task management system. Provides AI assistants with access to task management, project information, and feedback submission capabilities.",
   "type": "module",
   "main": "lib/index.js",
