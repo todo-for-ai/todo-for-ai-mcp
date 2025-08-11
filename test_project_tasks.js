@@ -11,7 +11,7 @@ async function testProjectTasks() {
 
   const config = {
     apiBaseUrl: 'http://127.0.0.1:50110/todo-for-ai/api/v1',
-    apiToken: 'Z98_DhuIBk54OK_ErOcxfJTI0VaT8Q9HDqwXx4fW4DU',
+    apiToken: 'your-api-token-here',
     apiTimeout: 10000,
     logLevel: 'info'
   };

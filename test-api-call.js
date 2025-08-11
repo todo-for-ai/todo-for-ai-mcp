@@ -8,7 +8,7 @@ async function testApiCall() {
     timeout: 10000,
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer Uehqeq-2PhTS8NXbZwJJpZlmb3zi1VFVumwrcBKxuE8',
+      'Authorization': 'Bearer your-api-token-here',
       'User-Agent': 'todo-for-ai-mcp/2.1.1'
     }
   };
