@@ -1,6 +1,10 @@
 # Todo for AI MCP Server
 
+[中文版本](README_zh.md) | **English**
+
 A Model Context Protocol (MCP) server that provides AI assistants with access to the Todo for AI task management system. This allows AI assistants to retrieve tasks, get project information, create new tasks, and submit task feedback through a standardized interface.
+
+> 🚀 **Try it now**: Visit [https://todo4ai.org/](https://todo4ai.org/) to experience our product!
 
 ## Features
 
@@ -559,3 +563,7 @@ For issues and questions:
 - Create an issue on GitHub
 - Check the troubleshooting section
 - Review the logs with debug mode enabled
+
+---
+
+**🌟 Ready to supercharge your AI workflow?** Visit [https://todo4ai.org/](https://todo4ai.org/) and experience the power of AI-driven task management!
