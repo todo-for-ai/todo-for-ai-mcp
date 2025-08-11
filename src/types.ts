@@ -7,6 +7,17 @@ export interface TodoConfig {
   apiTimeout: number;
   apiToken?: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+
+  // Transport configuration
+  transport: 'stdio' | 'http' | 'auto';
+
+  // HTTP transport configuration
+  httpPort: number;
+  httpHost: string;
+  sessionTimeout: number;
+  enableDnsRebindingProtection: boolean;
+  allowedOrigins: string[];
+  maxConnections: number;
 }
 
 export interface Project {
@@ -65,11 +76,13 @@ export interface Task {
 }
 
 export interface ApiResponse<T = any> {
-  success: boolean;
-  message: string;
+  code?: number;
+  success?: boolean;
+  message?: string;
   data?: T;
-  timestamp: string;
-  path: string;
+  timestamp?: string;
+  path?: string;
+  error?: string;
   pagination?: {
     page: number;
     per_page: number;
@@ -129,4 +142,36 @@ export interface CreateTaskArgs {
 export interface GetProjectInfoArgs {
   project_id?: number;
   project_name?: string;
+}
+
+// Session management types
+export interface SessionInfo {
+  id: string;
+  createdAt: Date;
+  lastActivity: Date;
+  isActive: boolean;
+  clientInfo?: {
+    userAgent?: string;
+    origin?: string;
+    ip?: string;
+  };
+}
+
+export interface SessionManager {
+  createSession(): string;
+  getSession(sessionId: string): SessionInfo | null;
+  updateActivity(sessionId: string): void;
+  removeSession(sessionId: string): void;
+  cleanupExpiredSessions(): void;
+  getActiveSessions(): SessionInfo[];
+}
+
+// HTTP transport types
+export interface HttpTransportConfig {
+  port: number;
+  host: string;
+  sessionTimeout: number;
+  enableDnsRebindingProtection: boolean;
+  allowedOrigins: string[];
+  maxConnections: number;
 }
