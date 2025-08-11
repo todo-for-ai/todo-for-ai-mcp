@@ -14,6 +14,10 @@ A Model Context Protocol (MCP) server that provides AI assistants with access to
 - ⚙️ **Flexible Configuration**: Environment variables and config file support
 - 🛡️ **Type Safety**: Full TypeScript support with strict type checking
 - 🚀 **Performance**: Optimized build with incremental compilation
+- 🌐 **HTTP Transport**: Modern HTTP-based communication using Streamable HTTP protocol
+- 🔒 **Security**: DNS rebinding protection, CORS support, and origin validation
+- 📡 **Real-time**: Server-Sent Events (SSE) support for real-time communication
+- 🔄 **Session Management**: Automatic session handling with timeout and cleanup
 
 ## Installation
 
@@ -35,6 +39,10 @@ npm link
 
 ## Configuration
 
+### Transport Type
+
+The MCP server uses **HTTP Transport**: Modern HTTP-based communication with Server-Sent Events (SSE) support for real-time communication.
+
 ### Environment Variables
 
 Create a `.env` file or set environment variables:
@@ -48,6 +56,25 @@ TODO_API_BASE_URL=http://localhost:50110/todo-for-ai/api/v1
 
 # Optional: API timeout in milliseconds (default: 10000)
 TODO_API_TIMEOUT=10000
+
+# HTTP Transport Configuration
+# Optional: HTTP server port (default: 3000)
+TODO_HTTP_PORT=3000
+
+# Optional: HTTP server host (default: 127.0.0.1)
+TODO_HTTP_HOST=127.0.0.1
+
+# Optional: Session timeout in milliseconds (default: 300000 = 5 minutes)
+TODO_SESSION_TIMEOUT=300000
+
+# Optional: Enable DNS rebinding protection (default: true)
+TODO_DNS_PROTECTION=true
+
+# Optional: Allowed origins for CORS (comma-separated, default: http://localhost:*,https://localhost:*)
+TODO_ALLOWED_ORIGINS=http://localhost:*,https://localhost:*
+
+# Optional: Maximum concurrent connections (default: 100)
+TODO_MAX_CONNECTIONS=100
 
 # Optional: Log level (default: info)
 LOG_LEVEL=info
@@ -73,8 +100,25 @@ Alternatively, create a `config.json` file:
 
 ### Command Line
 
+#### HTTP Transport
+
 ```bash
-# Start the MCP server with default configuration
+# Start with HTTP transport on default port 3000
+todo-for-ai-mcp --api-token your-token
+
+# HTTP transport with custom port and host
+todo-for-ai-mcp --api-token your-token --http-port 8080 --http-host 0.0.0.0
+
+# HTTP transport with session timeout and security options
+todo-for-ai-mcp --api-token your-token \
+  --session-timeout 600000 \
+  --dns-protection \
+  --allowed-origins "http://localhost:*,https://localhost:*"
+
+# Using environment variables for HTTP transport
+TODO_API_TOKEN=your-token \
+TODO_HTTP_PORT=3000 \
+TODO_HTTP_HOST=127.0.0.1 \
 todo-for-ai-mcp
 
 # With environment variables
@@ -99,6 +143,13 @@ The MCP server supports configuration through both command line arguments and en
 | API Token | `--api-token`, `--token` | `TODO_API_TOKEN` | **Required** |
 | API Timeout | `--api-timeout`, `--timeout` | `TODO_API_TIMEOUT` | `10000` (ms) |
 | Log Level | `--log-level` | `LOG_LEVEL` | `info` |
+
+| HTTP Port | `--http-port` | `TODO_HTTP_PORT` | `3000` |
+| HTTP Host | `--http-host` | `TODO_HTTP_HOST` | `127.0.0.1` |
+| Session Timeout | `--session-timeout` | `TODO_SESSION_TIMEOUT` | `300000` (ms) |
+| DNS Protection | `--dns-protection` | `TODO_DNS_PROTECTION` | `true` (for http) |
+| Allowed Origins | `--allowed-origins` | `TODO_ALLOWED_ORIGINS` | `http://localhost:*,https://localhost:*` |
+| Max Connections | `--max-connections` | `TODO_MAX_CONNECTIONS` | `100` |
 
 **Additional Options:**
 
@@ -133,11 +184,81 @@ todo-for-ai-mcp --api-base-url http://localhost:50110/todo-for-ai/api/v1 --api-t
 TODO_API_TOKEN=your-token todo-for-ai-mcp --log-level debug
 ```
 
+### HTTP Transport Usage
+
+When using HTTP transport, the MCP server runs as a standalone HTTP server that can be accessed via REST API and Server-Sent Events (SSE).
+
+#### Starting HTTP Server
+
+```bash
+# Start HTTP server on default port 3000
+todo-for-ai-mcp --api-token your-token --transport http
+
+# The server will be available at:
+# - Health check: http://127.0.0.1:3000/health
+# - MCP endpoint: http://127.0.0.1:3000/mcp
+```
+
+#### HTTP Endpoints
+
+- **GET /health**: Health check endpoint
+- **POST /mcp**: Client-to-server communication (JSON-RPC)
+- **GET /mcp**: Server-to-client notifications (SSE)
+- **DELETE /mcp**: Session termination
+
+#### Session Management
+
+HTTP transport uses session-based communication:
+
+1. **Initialize**: Send an `initialize` request to create a new session
+2. **Session ID**: Server returns a session ID in the `Mcp-Session-Id` header
+3. **Subsequent requests**: Include the session ID in all future requests
+4. **Cleanup**: Sessions automatically expire after the configured timeout
+
+#### Example HTTP Client Usage
+
+```javascript
+// Initialize session
+const initResponse = await fetch('http://127.0.0.1:3000/mcp', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2024-11-05',
+      capabilities: { tools: {} },
+      clientInfo: { name: 'my-client', version: '1.0.0' }
+    }
+  })
+});
+
+const sessionId = initResponse.headers.get('Mcp-Session-Id');
+
+// Use session for subsequent requests
+const toolsResponse = await fetch('http://127.0.0.1:3000/mcp', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Mcp-Session-Id': sessionId
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/list',
+    params: {}
+  })
+});
+```
+
 ### IDE Integration
 
 #### Claude Desktop
 
-Add to your Claude Desktop configuration file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+> **Note**: Claude Desktop currently supports Stdio transport. For HTTP transport support, you'll need to start the server separately and use a custom MCP client that supports HTTP transport.
+
+**Traditional Stdio configuration (if supported):**
 
 ```json
 {
@@ -185,6 +306,17 @@ Add to your Claude Desktop configuration file (`~/Library/Application Support/Cl
   }
 }
 ```
+
+**HTTP transport setup:**
+
+1. Start the HTTP server separately:
+
+```bash
+# Terminal 1: Start the MCP server in HTTP mode
+TODO_API_TOKEN=your-token todo-for-ai-mcp --http-port 3000
+```
+
+2. The server will be available at `http://127.0.0.1:3000/mcp` for custom MCP clients that support HTTP transport.
 
 #### Cursor IDE
 

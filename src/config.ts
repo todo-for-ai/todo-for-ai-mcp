@@ -4,12 +4,20 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
-// Load environment variables
-config();
-
-// Get package.json for version info
+// Load environment variables from the package directory, not the current working directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const envPath = join(__dirname, '..', '.env');
+
+// Try to load .env file from package directory, but don't fail if it doesn't exist
+try {
+  config({ path: envPath });
+  console.log(`[CONFIG] Loaded .env file from: ${envPath}`);
+} catch (error) {
+  console.log(`[CONFIG] No .env file found at: ${envPath}, using system environment variables only`);
+}
+
+// Get package.json for version info
 const packageJsonPath = join(__dirname, '..', 'package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 
@@ -30,6 +38,12 @@ Options:
   --api-timeout <ms>      API request timeout in milliseconds (default: 10000)
   --timeout <ms>          Alias for --api-timeout
   --log-level <level>     Log level: debug, info, warn, error (default: info)
+  --http-port <port>      HTTP server port (default: 3000)
+  --http-host <host>      HTTP server host (default: 127.0.0.1)
+  --session-timeout <ms>  Session timeout in milliseconds (default: 300000)
+  --dns-protection        Enable DNS rebinding protection (default: true)
+  --allowed-origins <origins>  Comma-separated list of allowed origins
+  --max-connections <num> Maximum concurrent connections (default: 100)
   --help                  Show this help message
   --version               Show version information
 
@@ -38,6 +52,12 @@ Environment Variables:
   TODO_API_TOKEN          API authentication token
   TODO_API_TIMEOUT        API request timeout in milliseconds
   LOG_LEVEL               Log level
+  TODO_HTTP_PORT          HTTP server port
+  TODO_HTTP_HOST          HTTP server host
+  TODO_SESSION_TIMEOUT    Session timeout in milliseconds
+  TODO_DNS_PROTECTION     Enable DNS rebinding protection (true/false)
+  TODO_ALLOWED_ORIGINS    Comma-separated list of allowed origins
+  TODO_MAX_CONNECTIONS    Maximum concurrent connections
 
 Configuration Priority:
   Command line arguments > Environment variables > Defaults
@@ -46,11 +66,17 @@ Examples:
   # Using command line arguments
   todo-for-ai-mcp --api-token your-token --log-level debug
 
+  # Using HTTP transport with custom port
+  todo-for-ai-mcp --api-token your-token --http-port 8080
+
   # Using environment variables
   TODO_API_TOKEN=your-token LOG_LEVEL=debug todo-for-ai-mcp
 
+  # HTTP transport with environment variables
+  TODO_API_TOKEN=your-token TODO_HTTP_PORT=3000 todo-for-ai-mcp
+
   # Mixed configuration (CLI args override env vars)
-  TODO_API_TOKEN=your-token todo-for-ai-mcp --log-level debug
+  TODO_API_TOKEN=your-token todo-for-ai-mcp --http-port 8080
 
 For more information, visit: https://github.com/todo-for-ai/todo-for-ai
 `);
@@ -78,13 +104,23 @@ function parseArgs(): { [key: string]: string } {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg && arg.startsWith('--')) {
-      const key = arg.substring(2);
-      const value = argv[i + 1];
-      if (value && !value.startsWith('--')) {
-        args[key] = value;
-        i++; // Skip the value in next iteration
+      // Handle --key=value format
+      if (arg.includes('=')) {
+        const [key, ...valueParts] = arg.substring(2).split('=');
+        const value = valueParts.join('='); // Handle values that contain '='
+        if (key) {
+          args[key] = value;
+        }
       } else {
-        args[key] = 'true'; // Boolean flag
+        // Handle --key value format
+        const key = arg.substring(2);
+        const value = argv[i + 1];
+        if (value && !value.startsWith('--')) {
+          args[key] = value;
+          i++; // Skip the value in next iteration
+        } else {
+          args[key] = 'true'; // Boolean flag
+        }
       }
     }
   }
@@ -109,6 +145,12 @@ export function getConfig(): TodoConfig {
     TODO_API_TIMEOUT: process.env.TODO_API_TIMEOUT,
     LOG_LEVEL: process.env.LOG_LEVEL,
     TODO_API_TOKEN: process.env.TODO_API_TOKEN,
+    TODO_HTTP_PORT: process.env.TODO_HTTP_PORT,
+    TODO_HTTP_HOST: process.env.TODO_HTTP_HOST,
+    TODO_SESSION_TIMEOUT: process.env.TODO_SESSION_TIMEOUT,
+    TODO_DNS_PROTECTION: process.env.TODO_DNS_PROTECTION,
+    TODO_ALLOWED_ORIGINS: process.env.TODO_ALLOWED_ORIGINS,
+    TODO_MAX_CONNECTIONS: process.env.TODO_MAX_CONNECTIONS,
     NODE_ENV: process.env.NODE_ENV,
     PWD: process.env.PWD
   };
@@ -118,6 +160,12 @@ export function getConfig(): TodoConfig {
     TODO_API_TIMEOUT: envVars.TODO_API_TIMEOUT || 'undefined',
     LOG_LEVEL: envVars.LOG_LEVEL || 'undefined',
     TODO_API_TOKEN: envVars.TODO_API_TOKEN ? `${envVars.TODO_API_TOKEN.substring(0, 8)}...` : 'NOT_SET',
+    TODO_HTTP_PORT: envVars.TODO_HTTP_PORT || 'undefined',
+    TODO_HTTP_HOST: envVars.TODO_HTTP_HOST || 'undefined',
+    TODO_SESSION_TIMEOUT: envVars.TODO_SESSION_TIMEOUT || 'undefined',
+    TODO_DNS_PROTECTION: envVars.TODO_DNS_PROTECTION || 'undefined',
+    TODO_ALLOWED_ORIGINS: envVars.TODO_ALLOWED_ORIGINS || 'undefined',
+    TODO_MAX_CONNECTIONS: envVars.TODO_MAX_CONNECTIONS || 'undefined',
     NODE_ENV: envVars.NODE_ENV || 'undefined',
     PWD: envVars.PWD || 'undefined'
   });
@@ -130,23 +178,53 @@ export function getConfig(): TodoConfig {
     apiBaseUrl = apiBaseUrl.slice(0, -1);
   }
 
+  // Parse HTTP configuration
+  const httpPort = parseInt(args['http-port'] || process.env.TODO_HTTP_PORT || '3000', 10);
+  const httpHost = args['http-host'] || process.env.TODO_HTTP_HOST || '127.0.0.1';
+  const sessionTimeout = parseInt(args['session-timeout'] || process.env.TODO_SESSION_TIMEOUT || '300000', 10);
+  const enableDnsRebindingProtection = args['dns-protection'] !== undefined ?
+    args['dns-protection'] !== 'false' && args['dns-protection'] !== '0' :
+    process.env.TODO_DNS_PROTECTION !== undefined ?
+      process.env.TODO_DNS_PROTECTION !== 'false' && process.env.TODO_DNS_PROTECTION !== '0' : false;
+
+  // Parse allowed origins
+  const allowedOriginsStr = args['allowed-origins'] || process.env.TODO_ALLOWED_ORIGINS;
+  const allowedOrigins = allowedOriginsStr ? allowedOriginsStr.split(',').map(o => o.trim()) : ['http://localhost:*', 'https://localhost:*'];
+
+  const maxConnections = parseInt(args['max-connections'] || process.env.TODO_MAX_CONNECTIONS || '100', 10);
+
   const config: TodoConfig = {
     apiBaseUrl,
     apiTimeout: parseInt(args['api-timeout'] || args['timeout'] || process.env.TODO_API_TIMEOUT || '10000', 10),
     logLevel: (args['log-level'] || process.env.LOG_LEVEL || 'info') as TodoConfig['logLevel'],
+    transport: (args['transport'] || process.env.TODO_TRANSPORT || 'auto') as TodoConfig['transport'],
+    httpPort,
+    httpHost,
+    sessionTimeout,
+    enableDnsRebindingProtection,
+    allowedOrigins,
+    maxConnections,
   };
 
   console.log('[CONFIG] Base configuration created:', {
     apiBaseUrl: config.apiBaseUrl,
     apiTimeout: config.apiTimeout,
     logLevel: config.logLevel,
+    httpPort: config.httpPort,
+    httpHost: config.httpHost,
+    sessionTimeout: config.sessionTimeout,
+    enableDnsRebindingProtection: config.enableDnsRebindingProtection,
+    allowedOrigins: config.allowedOrigins,
+    maxConnections: config.maxConnections,
     isDefaultBaseUrl: !args['api-base-url'] && !args['base-url'] && !process.env.TODO_API_BASE_URL,
     isDefaultTimeout: !args['api-timeout'] && !args['timeout'] && !process.env.TODO_API_TIMEOUT,
     isDefaultLogLevel: !args['log-level'] && !process.env.LOG_LEVEL,
+    isDefaultHttpPort: !args['http-port'] && !process.env.TODO_HTTP_PORT,
     configSource: {
       baseUrl: args['api-base-url'] || args['base-url'] ? 'args' : (process.env.TODO_API_BASE_URL ? 'env' : 'default'),
       timeout: args['api-timeout'] || args['timeout'] ? 'args' : (process.env.TODO_API_TIMEOUT ? 'env' : 'default'),
-      logLevel: args['log-level'] ? 'args' : (process.env.LOG_LEVEL ? 'env' : 'default')
+      logLevel: args['log-level'] ? 'args' : (process.env.LOG_LEVEL ? 'env' : 'default'),
+      httpPort: args['http-port'] ? 'args' : (process.env.TODO_HTTP_PORT ? 'env' : 'default')
     }
   });
 
@@ -169,6 +247,12 @@ export function getConfig(): TodoConfig {
     apiBaseUrl: config.apiBaseUrl,
     apiTimeout: config.apiTimeout,
     logLevel: config.logLevel,
+    httpPort: config.httpPort,
+    httpHost: config.httpHost,
+    sessionTimeout: config.sessionTimeout,
+    enableDnsRebindingProtection: config.enableDnsRebindingProtection,
+    allowedOriginsCount: config.allowedOrigins.length,
+    maxConnections: config.maxConnections,
     hasApiToken: !!config.apiToken,
     apiTokenPrefix: config.apiToken ? `${config.apiToken.substring(0, 8)}...` : 'NOT_SET',
     configurationComplete: true
@@ -200,6 +284,23 @@ export function validateConfig(config: TodoConfig): void {
   const validLogLevels = ['debug', 'info', 'warn', 'error'];
   if (!validLogLevels.includes(config.logLevel)) {
     throw new Error(`LOG_LEVEL must be one of: ${validLogLevels.join(', ')}`);
+  }
+
+  // Validate HTTP configuration
+  if (config.httpPort < 1 || config.httpPort > 65535) {
+    throw new Error('HTTP port must be between 1 and 65535');
+  }
+
+  if (config.sessionTimeout < 10000) {
+    throw new Error('Session timeout must be at least 10000ms (10 seconds)');
+  }
+
+  if (config.maxConnections < 1) {
+    throw new Error('Max connections must be at least 1');
+  }
+
+  if (!config.httpHost.match(/^[a-zA-Z0-9.-]+$/)) {
+    throw new Error('HTTP host must be a valid hostname or IP address');
   }
 }
 

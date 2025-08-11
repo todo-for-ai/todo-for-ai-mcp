@@ -1,5 +1,4 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -8,6 +7,8 @@ import {
 import { TodoApiClient } from './api-client.js';
 import { logger } from './logger.js';
 import { CONFIG } from './config.js';
+import { TransportFactory } from './transports/factory.js';
+import { BaseTransport } from './transports/base.js';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -21,6 +22,7 @@ const VERSION = packageJson.version;
 export class TodoMcpServer {
   private server: Server;
   private apiClient: TodoApiClient;
+  private transport?: BaseTransport;
   private instanceId: string;
 
   constructor() {
@@ -734,36 +736,81 @@ export class TodoMcpServer {
       apiBaseUrl: CONFIG.apiBaseUrl,
       hasApiToken: !!CONFIG.apiToken,
       logLevel: CONFIG.logLevel,
+      httpPort: CONFIG.httpPort,
+      httpHost: CONFIG.httpHost,
       version: VERSION
     });
 
     logger.debug('[MCP_SERVER] Creating transport...', {
-      transportType: 'StdioServerTransport',
-      instanceId: this.instanceId
-    });
-
-    const transport = new StdioServerTransport();
-
-    logger.debug('[MCP_SERVER] Connecting to transport...', {
       instanceId: this.instanceId,
-      timestamp: new Date().toISOString()
+      configuredTransport: CONFIG.transport,
+      httpPort: CONFIG.httpPort,
+      httpHost: CONFIG.httpHost
     });
 
     try {
-      await this.server.connect(transport);
+      // Use transport factory to create appropriate transport
+      this.transport = TransportFactory.create(CONFIG);
 
-      logger.info('[MCP_SERVER] Todo for AI MCP Server is running', {
+      logger.debug('[MCP_SERVER] Starting transport...', {
+        instanceId: this.instanceId,
+        transportType: this.transport.getType(),
+        httpPort: CONFIG.httpPort,
+        httpHost: CONFIG.httpHost,
+        timestamp: new Date().toISOString()
+      });
+
+      await this.transport.start(this.server);
+
+      const transportType = this.transport.getType();
+      const logData: any = {
         instanceId: this.instanceId,
         apiBaseUrl: CONFIG.apiBaseUrl,
+        transport: transportType,
         connected: true,
         ready: true,
         timestamp: new Date().toISOString()
-      });
+      };
+
+      // Add HTTP-specific info if using HTTP transport
+      if (transportType === 'http') {
+        logData.httpPort = CONFIG.httpPort;
+        logData.httpHost = CONFIG.httpHost;
+        logData.httpUrl = `http://${CONFIG.httpHost}:${CONFIG.httpPort}`;
+      }
+
+      logger.info('[MCP_SERVER] Todo for AI MCP Server is running', logData);
     } catch (error) {
       logger.error('[MCP_SERVER] Failed to start MCP Server', {
         instanceId: this.instanceId,
+        httpPort: CONFIG.httpPort,
+        httpHost: CONFIG.httpHost,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
+      });
+      throw error;
+    }
+  }
+
+  async stop(): Promise<void> {
+    logger.info('[MCP_SERVER] Stopping Todo for AI MCP Server...', {
+      instanceId: this.instanceId,
+      transport: this.transport?.getType() || 'unknown'
+    });
+
+    try {
+      if (this.transport) {
+        await this.transport.stop();
+        this.transport = undefined as any;
+      }
+
+      logger.info('[MCP_SERVER] Todo for AI MCP Server stopped successfully', {
+        instanceId: this.instanceId
+      });
+    } catch (error) {
+      logger.error('[MCP_SERVER] Error stopping MCP Server', {
+        instanceId: this.instanceId,
+        error: error instanceof Error ? error.message : String(error)
       });
       throw error;
     }

@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import https from 'https';
 import {
   TodoConfig,
   ApiResponse,
@@ -12,6 +13,7 @@ import {
   Project,
 } from './types.js';
 import { logger } from './logger.js';
+import { VERSION, PACKAGE_NAME } from './version.js';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -36,12 +38,14 @@ export class TodoApiClient {
   private client: AxiosInstance;
   private config: TodoConfig;
   private retryConfig: RetryConfig;
+  private lastRequestTime: number = 0;
+  private minRequestInterval: number = 500; // 最小请求间隔500ms
 
   constructor(config: TodoConfig) {
     this.config = config;
     this.retryConfig = {
-      maxRetries: 3,
-      retryDelay: 1000,
+      maxRetries: 5,
+      retryDelay: 2000, // 增加基础延迟到2秒
       retryDelayMultiplier: 2,
     };
 
@@ -61,13 +65,32 @@ export class TodoApiClient {
     // Add exactly one trailing slash
     normalizedBaseUrl = normalizedBaseUrl + '/';
 
+    // Get version safely
+    const version = this.getVersion();
+    const userAgent = `todo-for-ai-mcp/${version}`;
+
+    logger.debug('[API_CLIENT] Creating axios instance', {
+      baseURL: normalizedBaseUrl,
+      timeout: config.apiTimeout,
+      userAgent,
+      version
+    });
+
     this.client = axios.create({
       baseURL: normalizedBaseUrl,
       timeout: config.apiTimeout,
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': `todo-for-ai-mcp/${this.getVersion()}`,
+        'User-Agent': userAgent,
       },
+      // Force HTTPS protocol and disable proxy
+      httpsAgent: normalizedBaseUrl.startsWith('https://') ? new https.Agent({
+        rejectUnauthorized: true,
+        keepAlive: true
+      }) : undefined,
+      proxy: false, // Disable proxy to avoid HTTP/HTTPS conflicts
+      maxRedirects: 5,
+      validateStatus: (status) => status < 500, // Accept 4xx as valid responses to handle properly
     });
 
     // Add auth token if provided
@@ -142,11 +165,16 @@ export class TodoApiClient {
             duration: `${duration}ms`,
             data: error.response.data,
             headers: error.response.headers,
+            requestHeaders: error.config?.headers,
             config: {
               baseURL: error.config?.baseURL,
               url: error.config?.url,
-              method: error.config?.method
-            }
+              method: error.config?.method,
+              timeout: error.config?.timeout
+            },
+            requestData: error.config?.data,
+            userAgent: error.config?.headers?.['User-Agent'],
+            authorization: error.config?.headers?.['Authorization'] ? 'Bearer ***' : 'none'
           });
         } else if (error.request) {
           logger.error(`[NETWORK_ERROR] ${requestId} No response received`, {
@@ -158,12 +186,16 @@ export class TodoApiClient {
               url: error.config?.url,
               method: error.config?.method,
               timeout: error.config?.timeout
-            }
+            },
+            requestHeaders: error.config?.headers,
+            userAgent: error.config?.headers?.['User-Agent'],
+            authorization: error.config?.headers?.['Authorization'] ? 'Bearer ***' : 'none'
           });
         } else {
           logger.error(`[REQUEST_SETUP_ERROR] ${requestId}`, {
             message: error.message,
-            code: error.code
+            code: error.code,
+            stack: error.stack
           });
         }
         return Promise.reject(error);
@@ -238,14 +270,54 @@ export class TodoApiClient {
     }
 
     const status = error.response.status;
-    // Also retry on 502 Bad Gateway (common in concurrent scenarios)
-    return (status >= 500 && status < 600) || status === 502;
+
+    // Retry on 5xx server errors
+    if (status >= 500 && status < 600) {
+      return true;
+    }
+
+    // Retry on 429 (Too Many Requests)
+    if (status === 429) {
+      return true;
+    }
+
+    // Retry on 400 errors that might be Cloudflare security responses
+    if (status === 400) {
+      const errorMessage = error.message || '';
+      const responseData = typeof error.response.data === 'string' ? error.response.data : '';
+
+      // Check for Cloudflare security/rate limiting errors
+      if (errorMessage.includes('HTTPS port') ||
+          errorMessage.includes('rate limit') ||
+          responseData.includes('cloudflare') ||
+          responseData.includes('security')) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async enforceRequestInterval(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+
+    if (timeSinceLastRequest < this.minRequestInterval) {
+      const waitTime = this.minRequestInterval - timeSinceLastRequest;
+      logger.debug(`[API_CLIENT] Enforcing request interval, waiting ${waitTime}ms`);
+      await this.sleep(waitTime);
+    }
+
+    this.lastRequestTime = Date.now();
   }
 
   private async executeWithRetry<T>(
     operation: () => Promise<T>,
     operationName: string
   ): Promise<T> {
+    // 在每次操作前强制执行请求间隔
+    await this.enforceRequestInterval();
+
     let lastError: Error;
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
@@ -308,14 +380,22 @@ export class TodoApiClient {
         },
       });
 
-      const result = response.data;
+      const apiResponse = response.data;
 
-      if (result.error) {
-        throw new Error(result.error);
+      // Handle wrapped API response format
+      if (apiResponse.code && apiResponse.data) {
+        const result = apiResponse.data;
+        logger.info(`Found ${result.total_tasks || 0} tasks for project: ${args.project_name}`);
+        return result;
       }
 
-      logger.info(`Found ${result.total_tasks || 0} tasks for project: ${args.project_name}`);
-      return result;
+      // Handle direct response format (backward compatibility)
+      if (apiResponse.error) {
+        throw new Error(apiResponse.error);
+      }
+
+      logger.info(`Found ${apiResponse.total_tasks || 0} tasks for project: ${args.project_name}`);
+      return apiResponse;
     }, `getProjectTasksByName(${args.project_name})`);
   }
 
@@ -333,14 +413,22 @@ export class TodoApiClient {
         },
       });
 
-      const result = response.data;
-      
-      if ('error' in result) {
-        throw new Error((result as any).error);
+      const apiResponse = response.data as ApiResponse<Task> | Task;
+
+      // Handle wrapped API response format
+      if ('code' in apiResponse && apiResponse.code && apiResponse.data) {
+        const result = apiResponse.data;
+        logger.info(`Retrieved task: ${result.title}`);
+        return result;
       }
 
-      logger.info(`Retrieved task: ${(result as Task).title}`);
-      return result as Task;
+      // Handle direct response format (backward compatibility)
+      if ('error' in apiResponse) {
+        throw new Error((apiResponse as any).error);
+      }
+
+      logger.info(`Retrieved task: ${(apiResponse as Task).title}`);
+      return apiResponse as Task;
     } catch (error) {
       logger.error(`Failed to get task ${args.task_id}:`, error);
       throw error;
@@ -365,14 +453,22 @@ export class TodoApiClient {
         },
       });
 
-      const result = response.data;
-      
-      if (result.error) {
-        throw new Error(result.error);
+      const apiResponse = response.data;
+
+      // Handle wrapped API response format
+      if (apiResponse.code && apiResponse.data) {
+        const result = apiResponse.data;
+        logger.info(`Successfully submitted feedback for task ${args.task_id}`);
+        return result;
+      }
+
+      // Handle direct response format (backward compatibility)
+      if (apiResponse.error) {
+        throw new Error(apiResponse.error);
       }
 
       logger.info(`Successfully submitted feedback for task ${args.task_id}`);
-      return result;
+      return apiResponse;
     } catch (error) {
       logger.error(`Failed to submit feedback for task ${args.task_id}:`, error);
       throw error;
@@ -404,14 +500,22 @@ export class TodoApiClient {
         },
       });
 
-      const result = response.data;
+      const apiResponse = response.data as ApiResponse<Task> | Task;
 
-      if ('error' in result) {
-        throw new Error((result as any).error);
+      // Handle wrapped API response format
+      if ('code' in apiResponse && apiResponse.code && apiResponse.data) {
+        const result = apiResponse.data;
+        logger.info(`Successfully created task: ${result.title}`);
+        return result;
       }
 
-      logger.info(`Successfully created task: ${(result as Task).title}`);
-      return result as Task;
+      // Handle direct response format (backward compatibility)
+      if ('error' in apiResponse) {
+        throw new Error((apiResponse as any).error);
+      }
+
+      logger.info(`Successfully created task: ${(apiResponse as Task).title}`);
+      return apiResponse as Task;
     } catch (error) {
       logger.error(`Failed to create task "${args.title}":`, error);
       throw error;
@@ -515,27 +619,40 @@ export class TodoApiClient {
         dataKeys: response.data && typeof response.data === 'object' ? Object.keys(response.data) : []
       });
 
-      const result = response.data;
+      const apiResponse = response.data as ApiResponse<Project> | Project;
 
-      logger.debug('[API_CLIENT] Checking for error in response', {
+      // Handle wrapped API response format
+      if ('code' in apiResponse && apiResponse.code && apiResponse.data) {
+        const result = apiResponse.data;
+        logger.debug('[API_CLIENT] Using wrapped response data', {
+          apiCallId,
+          code: apiResponse.code,
+          resultType: typeof result,
+          resultKeys: result && typeof result === 'object' ? Object.keys(result) : []
+        });
+        return result;
+      }
+
+      // Handle direct response format (backward compatibility)
+      logger.debug('[API_CLIENT] Checking for error in direct response', {
         apiCallId,
-        hasError: 'error' in result,
-        resultType: typeof result,
-        resultKeys: result && typeof result === 'object' ? Object.keys(result) : []
+        hasError: 'error' in apiResponse,
+        resultType: typeof apiResponse,
+        resultKeys: apiResponse && typeof apiResponse === 'object' ? Object.keys(apiResponse) : []
       });
 
-      if ('error' in result) {
-        const errorMsg = (result as any).error;
+      if ('error' in apiResponse) {
+        const errorMsg = (apiResponse as any).error;
         logger.error('[API_CLIENT] MCP call returned error', {
           apiCallId,
           error: errorMsg,
           identifier,
-          fullResponse: result
+          fullResponse: apiResponse
         });
         throw new Error(errorMsg);
       }
 
-      const project = result as Project;
+      const project = apiResponse as Project;
       const totalDuration = Date.now() - apiCallStartTime;
 
       logger.info(`[API_CLIENT] getProjectInfo successful for ${identifier}`, {
@@ -602,14 +719,22 @@ export class TodoApiClient {
         },
       });
 
-      const result = response.data;
+      const apiResponse = response.data;
 
-      if (result.error) {
-        throw new Error(result.error);
+      // Handle wrapped API response format
+      if (apiResponse.code && apiResponse.data) {
+        const result = apiResponse.data;
+        logger.info(`Found ${result.pagination?.total || result.total || 0} projects for user`);
+        return result;
       }
 
-      logger.info(`Found ${result.total || 0} projects for user`);
-      return result;
+      // Handle direct response format (backward compatibility)
+      if (apiResponse.error) {
+        throw new Error(apiResponse.error);
+      }
+
+      logger.info(`Found ${apiResponse.total || 0} projects for user`);
+      return apiResponse;
     }, `listUserProjects(${JSON.stringify(args)})`);
   }
 
@@ -629,36 +754,13 @@ export class TodoApiClient {
   }
 
   private getVersion(): string {
-    try {
-      // Get current directory for ES modules
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = dirname(__filename);
+    // 优先使用编译时嵌入的版本信息
+    logger.debug('[API_CLIENT] Using embedded version information', {
+      version: VERSION,
+      packageName: PACKAGE_NAME
+    });
 
-      // Try multiple possible paths for package.json
-      const possiblePaths = [
-        join(__dirname, '../package.json'),
-        join(__dirname, '../../package.json'),
-        join(__dirname, '../../../package.json'),
-        join(process.cwd(), 'package.json')
-      ];
-      
-      for (const path of possiblePaths) {
-        try {
-          const packageJson = JSON.parse(readFileSync(path, 'utf-8'));
-          if (packageJson.version) {
-            return packageJson.version;
-          }
-        } catch (e) {
-          // Continue to next path
-        }
-      }
-      
-      logger.warn('Could not read package version from any path');
-      return '1.0.8'; // Use current version as fallback
-    } catch (error) {
-      logger.warn('Could not read package version:', error);
-      return '1.0.8'; // Use current version as fallback
-    }
+    return VERSION;
   }
 
   /**
