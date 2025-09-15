@@ -8,7 +8,9 @@ import {
   GetTaskByIdArgs,
   SubmitTaskFeedbackArgs,
   CreateTaskArgs,
+  UpdateTaskArgs,
   GetProjectInfoArgs,
+  WaitForNewTasksArgs,
   Task,
   Project,
 } from './types.js';
@@ -523,6 +525,46 @@ export class TodoApiClient {
   }
 
   /**
+   * Update an existing task
+   */
+  async updateTask(args: UpdateTaskArgs): Promise<Task> {
+    logger.info(`Updating task ${args.task_id}`);
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.post<Task>(this.normalizePath('mcp/call'), {
+        name: 'update_task',
+        arguments: {
+          task_id: args.task_id,
+          title: args.title,
+          content: args.content,
+          status: args.status,
+          priority: args.priority,
+          due_date: args.due_date,
+          completion_rate: args.completion_rate,
+          tags: args.tags,
+        },
+      });
+
+      const apiResponse = response.data as ApiResponse<Task> | Task;
+
+      // Handle wrapped API response format
+      if ('code' in apiResponse && apiResponse.code && apiResponse.data) {
+        const result = apiResponse.data;
+        logger.info(`Successfully updated task: ${result.title}`);
+        return result;
+      }
+
+      // Handle direct response format (backward compatibility)
+      if ('error' in apiResponse) {
+        throw new Error((apiResponse as any).error);
+      }
+
+      logger.info(`Successfully updated task ${args.task_id}`);
+      return apiResponse as Task;
+    }, `updateTask(${args.task_id})`);
+  }
+
+  /**
    * Get detailed project information
    */
   async getProjectInfo(args: GetProjectInfoArgs): Promise<Project> {
@@ -736,6 +778,171 @@ export class TodoApiClient {
       logger.info(`Found ${apiResponse.total || 0} projects for user`);
       return apiResponse;
     }, `listUserProjects(${JSON.stringify(args)})`);
+  }
+
+  /**
+   * Wait for new tasks in a project
+   */
+  async waitForNewTasks(args: any): Promise<any> {
+    const timeoutSeconds = args.timeout_seconds || 3600; // Default 1 hour
+    const pollIntervalSeconds = args.poll_interval_seconds || 30; // Default 30 seconds
+
+    logger.info(`Waiting for new tasks in project: ${args.project_name}`, {
+      timeout_seconds: timeoutSeconds,
+      poll_interval_seconds: pollIntervalSeconds
+    });
+
+    // Create a custom axios instance with extended timeout for this long-running operation
+    const longTimeoutClient = axios.create({
+      ...this.client.defaults,
+      timeout: (timeoutSeconds + 60) * 1000, // Add 60 seconds buffer to HTTP timeout
+    });
+
+    // Copy authorization header
+    if (this.config.apiToken) {
+      longTimeoutClient.defaults.headers.common['Authorization'] = `Bearer ${this.config.apiToken}`;
+    }
+
+    return this.executeWithRetry(async () => {
+      const response = await longTimeoutClient.post<any>(this.normalizePath('mcp/call'), {
+        name: 'wait_for_new_tasks',
+        arguments: {
+          project_name: args.project_name,
+          timeout_seconds: timeoutSeconds,
+          poll_interval_seconds: pollIntervalSeconds,
+        },
+      });
+
+      const apiResponse = response.data;
+
+      // Handle wrapped API response format
+      if (apiResponse.code && apiResponse.data) {
+        const result = apiResponse.data;
+        if (result.new_tasks && result.new_tasks.length > 0) {
+          logger.info(`Found ${result.new_tasks.length} new tasks in project: ${args.project_name}`);
+        } else if (result.timeout) {
+          logger.info(`Wait for new tasks timed out for project: ${args.project_name}`);
+        }
+        return result;
+      }
+
+      // Handle direct response format (backward compatibility)
+      if (apiResponse.error) {
+        throw new Error(apiResponse.error);
+      }
+
+      if (apiResponse.new_tasks && apiResponse.new_tasks.length > 0) {
+        logger.info(`Found ${apiResponse.new_tasks.length} new tasks in project: ${args.project_name}`);
+      } else if (apiResponse.timeout) {
+        logger.info(`Wait for new tasks timed out for project: ${args.project_name}`);
+      }
+      return apiResponse;
+    }, `waitForNewTasks(${args.project_name})`);
+  }
+
+  /**
+   * Wait for human feedback on an interactive task
+   */
+  async waitForHumanFeedback(
+    taskId: number,
+    sessionId: string,
+    timeoutSeconds: number = 3600,
+    pollIntervalSeconds: number = 30
+  ): Promise<any> {
+    logger.info(`Waiting for human feedback on task: ${taskId}`, {
+      session_id: sessionId,
+      timeout_seconds: timeoutSeconds,
+      poll_interval_seconds: pollIntervalSeconds
+    });
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.post<any>(this.normalizePath('mcp/call'), {
+        name: 'wait_for_human_feedback',
+        arguments: {
+          task_id: taskId,
+          session_id: sessionId,
+          timeout_seconds: timeoutSeconds,
+          poll_interval_seconds: pollIntervalSeconds
+        }
+      });
+
+      const result = response.data;
+      logger.info(`Wait for human feedback completed`, {
+        task_id: taskId,
+        session_id: sessionId,
+        human_feedback_received: result?.content?.human_feedback_received,
+        timeout: result?.content?.timeout
+      });
+      return result;
+    }, `waitForHumanFeedback(taskId=${taskId}, sessionId=${sessionId})`);
+  }
+
+  /**
+   * Submit human feedback for an interactive task
+   */
+  async submitHumanFeedback(
+    taskId: number,
+    sessionId: string,
+    feedbackContent: string,
+    action: 'complete' | 'continue'
+  ): Promise<any> {
+    logger.info(`Submitting human feedback for task: ${taskId}`, {
+      session_id: sessionId,
+      action: action
+    });
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.post<any>(this.normalizePath(`interactive/tasks/${taskId}/human-feedback`), {
+        feedback_content: feedbackContent,
+        action: action,
+        session_id: sessionId
+      });
+
+      const result = response.data;
+      logger.info(`Human feedback submitted successfully`, {
+        task_id: taskId,
+        session_id: sessionId,
+        action: action
+      });
+      return result;
+    }, `submitHumanFeedback(taskId=${taskId}, action=${action})`);
+  }
+
+  /**
+   * Get interaction status for a task
+   */
+  async getInteractionStatus(taskId: number): Promise<any> {
+    logger.info(`Getting interaction status for task: ${taskId}`);
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get<any>(this.normalizePath(`interactive/tasks/${taskId}/interaction-status`));
+
+      const result = response.data;
+      logger.info(`Interaction status retrieved successfully`, {
+        task_id: taskId,
+        is_interactive: result?.is_interactive,
+        ai_waiting_feedback: result?.ai_waiting_feedback
+      });
+      return result;
+    }, `getInteractionStatus(taskId=${taskId})`);
+  }
+
+  /**
+   * Get interaction history for a task
+   */
+  async getInteractionHistory(taskId: number): Promise<any> {
+    logger.info(`Getting interaction history for task: ${taskId}`);
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get<any>(this.normalizePath(`interactive/tasks/${taskId}/interaction-history`));
+
+      const result = response.data;
+      logger.info(`Interaction history retrieved successfully`, {
+        task_id: taskId,
+        total_interactions: result?.total_interactions || 0
+      });
+      return result;
+    }, `getInteractionHistory(taskId=${taskId})`);
   }
 
   /**

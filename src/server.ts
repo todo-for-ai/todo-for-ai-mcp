@@ -234,6 +234,51 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'update_task',
+          description: 'Update an existing task with proper permission checking',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task_id: {
+                type: 'integer',
+                description: 'The ID of the task to update',
+              },
+              title: {
+                type: 'string',
+                description: 'The new title of the task (optional)',
+              },
+              content: {
+                type: 'string',
+                description: 'The new content/description of the task (optional)',
+              },
+              status: {
+                type: 'string',
+                enum: ['todo', 'in_progress', 'review', 'done', 'cancelled'],
+                description: 'The new status of the task (optional)',
+              },
+              priority: {
+                type: 'string',
+                enum: ['low', 'medium', 'high', 'urgent'],
+                description: 'The new priority of the task (optional)',
+              },
+              due_date: {
+                type: 'string',
+                description: 'The new due date in YYYY-MM-DD format (optional)',
+              },
+              completion_rate: {
+                type: 'number',
+                description: 'The completion rate percentage (0-100) (optional)',
+              },
+              tags: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Tags associated with the task (optional)',
+              },
+            },
+            required: ['task_id'],
+          },
+        },
+        {
           name: 'get_project_info',
           description: 'Get detailed project information including statistics and configuration. Provide either project_id or project_name.',
           inputSchema: {
@@ -270,6 +315,66 @@ export class TodoMcpServer {
               },
             },
             required: [],
+          },
+        },
+        {
+          name: 'wait_for_new_tasks',
+          description: 'Wait for new tasks to be created in a project, with configurable timeout and polling interval',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              project_name: {
+                type: 'string',
+                description: 'The name of the project to monitor for new tasks',
+              },
+              timeout_seconds: {
+                type: 'number',
+                description: 'Maximum time to wait for new tasks in seconds (default: 3600, max: 7200)',
+                default: 3600,
+                minimum: 30,
+                maximum: 7200,
+              },
+              poll_interval_seconds: {
+                type: 'number',
+                description: 'Interval between checks for new tasks in seconds (default: 30, min: 10)',
+                default: 30,
+                minimum: 10,
+                maximum: 300,
+              },
+            },
+            required: ['project_name'],
+          },
+        },
+        {
+          name: 'wait_for_human_feedback',
+          description: 'Wait for human feedback on an interactive task that AI has submitted for review',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task_id: {
+                type: 'number',
+                description: 'The ID of the task to wait for human feedback',
+              },
+              session_id: {
+                type: 'string',
+                description: 'The interaction session ID',
+              },
+              timeout_seconds: {
+                type: 'number',
+                description: 'Maximum time to wait for human feedback in seconds (default: 3600, max: 7200)',
+                default: 3600,
+                minimum: 30,
+                maximum: 7200,
+              },
+              poll_interval_seconds: {
+                type: 'number',
+                description: 'Interval between checks for human feedback in seconds (default: 30, min: 10)',
+                default: 30,
+                minimum: 10,
+                maximum: 300,
+              },
+            },
+            required: ['task_id', 'session_id'],
           },
         },
       ];
@@ -356,6 +461,18 @@ export class TodoMcpServer {
             result = await this.handleCreateTask(args);
             break;
 
+          case 'update_task':
+            logger.info(`[MCP_SERVER] Executing update_task`, {
+              requestId,
+              instanceId: this.instanceId,
+              taskId: args?.task_id,
+              hasTitle: !!args?.title,
+              hasStatus: !!args?.status,
+              hasPriority: !!args?.priority
+            });
+            result = await this.handleUpdateTask(args);
+            break;
+
           case 'get_project_info':
             logger.info(`[MCP_SERVER] Executing get_project_info`, {
               requestId,
@@ -378,6 +495,29 @@ export class TodoMcpServer {
             result = await this.handleListUserProjects(args);
             break;
 
+          case 'wait_for_new_tasks':
+            logger.info(`[MCP_SERVER] Executing wait_for_new_tasks`, {
+              requestId,
+              instanceId: this.instanceId,
+              projectName: args?.project_name,
+              timeoutSeconds: args?.timeout_seconds,
+              pollIntervalSeconds: args?.poll_interval_seconds
+            });
+            result = await this.handleWaitForNewTasks(args);
+            break;
+
+          case 'wait_for_human_feedback':
+            logger.info(`[MCP_SERVER] Executing wait_for_human_feedback`, {
+              requestId,
+              instanceId: this.instanceId,
+              taskId: args?.task_id,
+              sessionId: args?.session_id,
+              timeoutSeconds: args?.timeout_seconds,
+              pollIntervalSeconds: args?.poll_interval_seconds
+            });
+            result = await this.handleWaitForHumanFeedback(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -385,7 +525,7 @@ export class TodoMcpServer {
               instanceId: this.instanceId,
               toolName: name,
               error: error.message,
-              availableTools: ['get_project_tasks_by_name', 'get_task_by_id', 'submit_task_feedback', 'create_task', 'get_project_info', 'list_user_projects']
+              availableTools: ['get_project_tasks_by_name', 'get_task_by_id', 'submit_task_feedback', 'create_task', 'update_task', 'get_project_info', 'list_user_projects', 'wait_for_new_tasks', 'wait_for_human_feedback']
             });
             throw error;
         }
@@ -491,6 +631,19 @@ export class TodoMcpServer {
 
   private async handleCreateTask(args: any) {
     const result = await this.apiClient.createTask(args);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async handleUpdateTask(args: any) {
+    const result = await this.apiClient.updateTask(args);
 
     return {
       content: [
@@ -718,6 +871,248 @@ export class TodoMcpServer {
       });
 
       logger.error('[MCP_SERVER] ========== HANDLER END: handleListUserProjects (ERROR) ==========', {
+        handlerId,
+        instanceId: this.instanceId,
+        success: false,
+        totalDuration: `${handlerDuration}ms`,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+
+      throw error;
+    }
+  }
+
+  private async handleWaitForNewTasks(args: any) {
+    const handlerStartTime = Date.now();
+    const handlerId = `handler-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+
+    logger.info('[MCP_SERVER] ========== HANDLER START: handleWaitForNewTasks ==========', {
+      handlerId,
+      instanceId: this.instanceId,
+      args,
+      projectName: args?.project_name,
+      timeoutSeconds: args?.timeout_seconds,
+      pollIntervalSeconds: args?.poll_interval_seconds,
+      timestamp: new Date().toISOString()
+    });
+
+    logger.debug('[MCP_SERVER] handleWaitForNewTasks input validation', {
+      handlerId,
+      projectName: args?.project_name,
+      timeoutSeconds: args?.timeout_seconds,
+      pollIntervalSeconds: args?.poll_interval_seconds,
+      argsType: typeof args,
+      argsKeys: args ? Object.keys(args) : [],
+      isValidInput: !!args?.project_name
+    });
+
+    try {
+      logger.info('[MCP_SERVER] handleWaitForNewTasks calling API client...', {
+        handlerId,
+        instanceId: this.instanceId,
+        apiMethod: 'waitForNewTasks',
+        args
+      });
+
+      const apiCallStartTime = Date.now();
+      const result = await this.apiClient.waitForNewTasks(args);
+      const apiCallDuration = Date.now() - apiCallStartTime;
+
+      logger.info('[MCP_SERVER] handleWaitForNewTasks API call successful', {
+        handlerId,
+        instanceId: this.instanceId,
+        apiCallDuration: `${apiCallDuration}ms`,
+        projectName: args?.project_name,
+        hasNewTasks: !!(result.new_tasks && result.new_tasks.length > 0),
+        newTasksCount: result.new_tasks ? result.new_tasks.length : 0,
+        timeout: !!result.timeout,
+        resultSize: JSON.stringify(result).length,
+        resultKeys: Object.keys(result)
+      });
+
+      logger.debug('[MCP_SERVER] handleWaitForNewTasks API result details', {
+        handlerId,
+        result: result,
+        newTasks: result.new_tasks,
+        timeout: result.timeout
+      });
+
+      logger.debug('[MCP_SERVER] handleWaitForNewTasks preparing response...', {
+        handlerId,
+        responseFormat: 'MCP tool response',
+        contentType: 'text',
+        willStringify: true
+      });
+
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+
+      const handlerDuration = Date.now() - handlerStartTime;
+      logger.info('[MCP_SERVER] handleWaitForNewTasks response prepared', {
+        handlerId,
+        instanceId: this.instanceId,
+        handlerDuration: `${handlerDuration}ms`,
+        responseSize: JSON.stringify(response).length,
+        contentType: response.content[0]?.type,
+        contentCount: response.content.length,
+        textLength: response.content[0]?.text?.length
+      });
+
+      logger.info('[MCP_SERVER] ========== HANDLER END: handleWaitForNewTasks ==========', {
+        handlerId,
+        instanceId: this.instanceId,
+        success: true,
+        totalDuration: `${handlerDuration}ms`,
+        timestamp: new Date().toISOString()
+      });
+
+      return response;
+    } catch (error) {
+      const handlerDuration = Date.now() - handlerStartTime;
+
+      logger.error('[MCP_SERVER] handleWaitForNewTasks failed', {
+        handlerId,
+        instanceId: this.instanceId,
+        handlerDuration: `${handlerDuration}ms`,
+        args,
+        error: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+
+      logger.error('[MCP_SERVER] ========== HANDLER END: handleWaitForNewTasks (ERROR) ==========', {
+        handlerId,
+        instanceId: this.instanceId,
+        success: false,
+        totalDuration: `${handlerDuration}ms`,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+
+      throw error;
+    }
+  }
+
+  private async handleWaitForHumanFeedback(args: any) {
+    const handlerStartTime = Date.now();
+    const handlerId = `handler-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+
+    logger.info('[MCP_SERVER] ========== HANDLER START: handleWaitForHumanFeedback ==========', {
+      handlerId,
+      instanceId: this.instanceId,
+      args,
+      taskId: args?.task_id,
+      sessionId: args?.session_id,
+      timeoutSeconds: args?.timeout_seconds,
+      pollIntervalSeconds: args?.poll_interval_seconds,
+      timestamp: new Date().toISOString()
+    });
+
+    logger.debug('[MCP_SERVER] handleWaitForHumanFeedback input validation', {
+      handlerId,
+      taskId: args?.task_id,
+      sessionId: args?.session_id,
+      timeoutSeconds: args?.timeout_seconds,
+      pollIntervalSeconds: args?.poll_interval_seconds,
+      argsType: typeof args,
+      argsKeys: args ? Object.keys(args) : [],
+      isValidInput: !!(args?.task_id && args?.session_id)
+    });
+
+    try {
+      logger.info('[MCP_SERVER] handleWaitForHumanFeedback calling API client...', {
+        handlerId,
+        instanceId: this.instanceId,
+        apiMethod: 'waitForHumanFeedback',
+        args
+      });
+
+      const apiCallStartTime = Date.now();
+      const result = await this.apiClient.waitForHumanFeedback(
+        args.task_id,
+        args.session_id,
+        args.timeout_seconds,
+        args.poll_interval_seconds
+      );
+      const apiCallDuration = Date.now() - apiCallStartTime;
+
+      logger.info('[MCP_SERVER] handleWaitForHumanFeedback API call successful', {
+        handlerId,
+        instanceId: this.instanceId,
+        apiCallDuration: `${apiCallDuration}ms`,
+        taskId: args?.task_id,
+        sessionId: args?.session_id,
+        humanFeedbackReceived: !!result.content?.human_feedback_received,
+        timeout: !!result.content?.timeout,
+        resultSize: JSON.stringify(result).length,
+        resultKeys: Object.keys(result)
+      });
+
+      logger.debug('[MCP_SERVER] handleWaitForHumanFeedback API result details', {
+        handlerId,
+        result: result,
+        humanFeedbackReceived: result.content?.human_feedback_received,
+        timeout: result.content?.timeout,
+        action: result.content?.action
+      });
+
+      logger.debug('[MCP_SERVER] handleWaitForHumanFeedback preparing response...', {
+        handlerId,
+        responseFormat: 'MCP tool response',
+        contentType: 'text',
+        willStringify: true
+      });
+
+      const response = {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(result.content || result, null, 2),
+          },
+        ],
+      };
+
+      const handlerDuration = Date.now() - handlerStartTime;
+      logger.info('[MCP_SERVER] handleWaitForHumanFeedback response prepared', {
+        handlerId,
+        instanceId: this.instanceId,
+        handlerDuration: `${handlerDuration}ms`,
+        responseSize: JSON.stringify(response).length,
+        contentType: response.content[0]?.type,
+        contentCount: response.content.length,
+        textLength: response.content[0]?.text?.length
+      });
+
+      logger.info('[MCP_SERVER] ========== HANDLER END: handleWaitForHumanFeedback ==========', {
+        handlerId,
+        instanceId: this.instanceId,
+        success: true,
+        totalDuration: `${handlerDuration}ms`,
+        timestamp: new Date().toISOString()
+      });
+
+      return response;
+    } catch (error) {
+      const handlerDuration = Date.now() - handlerStartTime;
+
+      logger.error('[MCP_SERVER] handleWaitForHumanFeedback failed', {
+        handlerId,
+        instanceId: this.instanceId,
+        handlerDuration: `${handlerDuration}ms`,
+        args,
+        error: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+
+      logger.error('[MCP_SERVER] ========== HANDLER END: handleWaitForHumanFeedback (ERROR) ==========', {
         handlerId,
         instanceId: this.instanceId,
         success: false,

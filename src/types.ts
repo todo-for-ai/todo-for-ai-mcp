@@ -60,7 +60,7 @@ export interface Task {
   title: string;
   description?: string;
   content?: string;
-  status: 'todo' | 'in_progress' | 'review' | 'done' | 'cancelled';
+  status: 'todo' | 'in_progress' | 'review' | 'done' | 'cancelled' | 'waiting_human_feedback';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   assignee?: string;
   due_date?: string;
@@ -73,6 +73,10 @@ export interface Task {
   created_at: string;
   updated_at: string;
   created_by: string;
+  // 交互式任务相关字段
+  is_interactive?: boolean;
+  ai_waiting_feedback?: boolean;
+  interaction_session_id?: string;
 }
 
 export interface ApiResponse<T = any> {
@@ -120,7 +124,7 @@ export interface SubmitTaskFeedbackArgs {
   task_id: number;
   project_name: string;
   feedback_content: string;
-  status: 'in_progress' | 'review' | 'done' | 'cancelled';
+  status: 'in_progress' | 'review' | 'done' | 'cancelled' | 'waiting_human_feedback';
   ai_identifier?: string;
 }
 
@@ -139,9 +143,45 @@ export interface CreateTaskArgs {
   ai_identifier?: string;
 }
 
+export interface UpdateTaskArgs {
+  task_id: number;
+  title?: string;
+  content?: string;
+  status?: 'todo' | 'in_progress' | 'review' | 'done' | 'cancelled';
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  due_date?: string;
+  completion_rate?: number;
+  tags?: string[];
+}
+
 export interface GetProjectInfoArgs {
   project_id?: number;
   project_name?: string;
+}
+
+export interface WaitForNewTasksArgs {
+  project_name: string;
+  timeout_seconds?: number;
+  poll_interval_seconds?: number;
+}
+
+export interface WaitForHumanFeedbackArgs {
+  task_id: number;
+  session_id: string;
+  timeout_seconds?: number;
+  poll_interval_seconds?: number;
+}
+
+export interface InteractionLog {
+  id: number;
+  task_id: number;
+  session_id: string;
+  interaction_type: 'ai_feedback' | 'human_response';
+  content: string;
+  status: 'pending' | 'completed' | 'continued';
+  created_at: string;
+  created_by?: string;
+  metadata?: any;
 }
 
 // Session management types
