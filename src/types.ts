@@ -215,3 +215,35 @@ export interface HttpTransportConfig {
   allowedOrigins: string[];
   maxConnections: number;
 }
+
+
+// Request/Response types for handlers
+export interface Request {
+  projectId?: number;
+  taskId?: number;
+  project_name?: string;
+  task_id?: number;
+  project_id?: number;
+  title?: string;
+  content?: string;
+  status?: string;
+  priority?: string;
+  assignee?: string;
+  due_date?: string;
+  estimated_hours?: number;
+  tags?: string[];
+  related_files?: string[];
+  is_ai_task?: boolean;
+  ai_identifier?: string;
+  feedback_content?: string;
+  timeout_seconds?: number;
+  poll_interval_seconds?: number;
+  [key: string]: any;
+}
+
+export interface Response {
+  success: boolean;
+  data?: any;
+  error?: string;
+  message?: string;
+}

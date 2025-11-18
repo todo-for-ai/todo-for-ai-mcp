@@ -1,6 +1,6 @@
 {
   "name": "@todo-for-ai/mcp",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "description": "Model Context Protocol server for Todo for AI task management system with Streamable HTTP transport. Provides AI assistants with access to task management, project information, and feedback submission capabilities through modern HTTP-based communication.",
   "type": "module",
   "main": "lib/index.js",
@@ -59,7 +59,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.2",
-    "axios": "1.11.0",
+    "axios": "^1.7.7",
     "dotenv": "^16.4.0",
     "express": "^5.0.1",
     "cors": "^2.8.5"
