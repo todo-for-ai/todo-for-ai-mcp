@@ -2861,6 +2861,11 @@ export class TodoMcpServer {
           description: 'Global collaboration orchestrator: runs the full multi-Agent maintenance cycle in one call — (1) health (stale agents, expired leases, overdue escalation), (2) workflow step timeouts + re-advance, (3) fire due workflow triggers, (4) conflict detection + auto-resolution. Designed to be called by an external scheduler every few minutes. Returns a per-stage summary.',
           inputSchema: { type: 'object', properties: {} },
         },
+        {
+          name: 'get_orchestrator_status',
+          description: 'Return the state of the built-in orchestrator scheduler (enabled/disabled) and the last orchestration cycle summary, if the scheduler is enabled via ORCHESTRATOR_ENABLED.',
+          inputSchema: { type: 'object', properties: {} },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -3812,6 +3817,11 @@ export class TodoMcpServer {
             result = await this.handleOrchestrate(args);
             break;
 
+          case 'get_orchestrator_status':
+            logger.info(`[MCP_SERVER] Executing get_orchestrator_status`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetOrchestratorStatus(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -3971,7 +3981,8 @@ export class TodoMcpServer {
                 'list_sandbox_templates',
                 'instantiate_sandbox_template',
                 'auto_resolve_conflicts',
-                'orchestrate'
+                'orchestrate',
+                'get_orchestrator_status'
               ]
             });
             throw error;
@@ -5584,6 +5595,17 @@ export class TodoMcpServer {
       lines.push(`  错误 (${d.errors.length}): ${d.errors.join('; ')}`);
     }
     return this.toToolResponse(lines.join('\n'), result);
+  }
+
+  private async handleGetOrchestratorStatus(args: any) {
+    const result = await this.apiClient.getOrchestratorStatus();
+    const d = result?.data || result;
+    const enabled = d?.enabled ? '运行中' : '未运行';
+    const last = d?.last_run;
+    const lastLine = last
+      ? `上次运行: ${last.summary} (耗时 ${last.duration_seconds}s)`
+      : '上次运行: 无';
+    return this.toToolResponse(`编排调度器状态: ${enabled}\n${lastLine}`, result);
   }
 
   async run(): Promise<void> {

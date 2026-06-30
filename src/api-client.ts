@@ -2420,6 +2420,17 @@ export class TodoApiClient {
   }
 
   /**
+   * Built-in orchestrator scheduler state + last run summary.
+   */
+  async getOrchestratorStatus(): Promise<any> {
+    logger.info(`[API_CLIENT] Getting orchestrator status`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/maintenance/orchestrator/status');
+      return this.unwrapApiData<any>(response.data);
+    }, 'getOrchestratorStatus');
+  }
+
+  /**
    * Test connection to the Todo API
    */
   async testConnection(): Promise<boolean> {
