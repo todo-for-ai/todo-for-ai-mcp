@@ -2856,6 +2856,11 @@ export class TodoMcpServer {
           description: 'Maintenance: scan for conflicts and auto-resolve low-severity ones (INFO/WARNING) using their suggested strategy if it is safe (auto_retry/least_loaded). CRITICAL conflicts are never auto-resolved.',
           inputSchema: { type: 'object', properties: {} },
         },
+        {
+          name: 'orchestrate',
+          description: 'Global collaboration orchestrator: runs the full multi-Agent maintenance cycle in one call — (1) health (stale agents, expired leases, overdue escalation), (2) workflow step timeouts + re-advance, (3) fire due workflow triggers, (4) conflict detection + auto-resolution. Designed to be called by an external scheduler every few minutes. Returns a per-stage summary.',
+          inputSchema: { type: 'object', properties: {} },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -3802,6 +3807,11 @@ export class TodoMcpServer {
             result = await this.handleAutoResolveConflicts(args);
             break;
 
+          case 'orchestrate':
+            logger.info(`[MCP_SERVER] Executing orchestrate`, { requestId, instanceId: this.instanceId });
+            result = await this.handleOrchestrate(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -3960,7 +3970,8 @@ export class TodoMcpServer {
                 'get_conflicts_dashboard',
                 'list_sandbox_templates',
                 'instantiate_sandbox_template',
-                'auto_resolve_conflicts'
+                'auto_resolve_conflicts',
+                'orchestrate'
               ]
             });
             throw error;
@@ -5557,6 +5568,22 @@ export class TodoMcpServer {
       `冲突自动解决完成: 检测到 ${d?.detected || 0} 个新冲突, 自动解决 ${resolved} 个, 跳过 ${skipped} 个`,
       result,
     );
+  }
+
+  private async handleOrchestrate(args: any) {
+    const result = await this.apiClient.orchestrate();
+    const d = result?.data || result;
+    const lines = [
+      `编排完成 (耗时 ${d?.duration_seconds ?? '?'}s):`,
+      `  健康: 离线 Agent ${d?.stale_agents ?? 0}, 过期租约 ${d?.expired_leases ?? 0}, 升级任务 ${d?.escalated_tasks ?? 0}`,
+      `  工作流超时: ${d?.timed_out_steps ?? 0} 个步骤`,
+      `  触发器: 触发 ${d?.triggers_fired ?? 0} 个 (run IDs: ${(d?.trigger_run_ids || []).join(',') || '无'})`,
+      `  冲突: 检测 ${d?.conflicts_detected ?? 0}, 自动解决 ${d?.conflicts_auto_resolved ?? 0}, 跳过 ${d?.conflicts_skipped ?? 0}`,
+    ];
+    if (d?.errors?.length) {
+      lines.push(`  错误 (${d.errors.length}): ${d.errors.join('; ')}`);
+    }
+    return this.toToolResponse(lines.join('\n'), result);
   }
 
   async run(): Promise<void> {

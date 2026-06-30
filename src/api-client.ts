@@ -2409,6 +2409,17 @@ export class TodoApiClient {
   }
 
   /**
+   * Global collaboration orchestrator: full maintenance cycle in one call.
+   */
+  async orchestrate(): Promise<any> {
+    logger.info(`[API_CLIENT] Running global orchestration`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.post('agents/maintenance/orchestrate', {});
+      return this.unwrapApiData<any>(response.data);
+    }, 'orchestrate');
+  }
+
+  /**
    * Test connection to the Todo API
    */
   async testConnection(): Promise<boolean> {
