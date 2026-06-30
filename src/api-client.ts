@@ -1450,6 +1450,20 @@ export class TodoApiClient {
   }
 
   /**
+   * Unified security event feed: sandbox violations + conflicts + security audit.
+   */
+  async listSecurityEvents(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; page?: number; per_page?: number }): Promise<any> {
+    logger.info('[API_CLIENT] Listing security events', args);
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/security/events', {
+        params: this.compactParams(args || {}),
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'listSecurityEvents');
+  }
+
+  /**
    * Run a full platform health check.
    */
   async healthCheck(): Promise<{ stale_agents: number; stale_agent_ids: number[]; expired_leases: number; escalated_tasks: number; escalated_task_ids: number[] }> {

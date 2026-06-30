@@ -1439,6 +1439,22 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'list_security_events',
+          description: 'Unified security event feed: aggregates sandbox violations, agent conflicts, and security-relevant audit entries (sandbox./conflict./reputation./workflow_step_overridden) into a single time-ordered list. Each event is normalized to {event_type, occurred_at, severity, agent_id, title, detail, source, source_id, workflow_run_id}.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              agent_id: { type: 'integer', description: 'Filter to events involving this agent' },
+              workflow_run_id: { type: 'integer', description: 'Filter to events tied to this workflow run' },
+              event_type: { type: 'string', description: 'Filter by event source type: sandbox_violation | conflict | audit' },
+              severity: { type: 'string', description: 'Filter by severity: INFO | WARNING | CRITICAL' },
+              since: { type: 'string', description: 'Only events after this ISO 8601 datetime' },
+              page: { type: 'integer', description: 'Page number' },
+              per_page: { type: 'integer', description: 'Items per page' },
+            },
+          },
+        },
+        {
           name: 'health_check',
           description: 'Run a full platform health check: expire stale agents, expire stale leases, and escalate overdue tasks. Designed to be called periodically by a cron job. Returns a summary of actions taken.',
           inputSchema: {
@@ -3264,6 +3280,11 @@ export class TodoMcpServer {
             result = await this.handleListAuditLogs(args);
             break;
 
+          case 'list_security_events':
+            logger.info(`[MCP_SERVER] Executing list_security_events`, { requestId, instanceId: this.instanceId });
+            result = await this.handleListSecurityEvents(args);
+            break;
+
           case 'health_check':
             logger.info(`[MCP_SERVER] Executing health_check`, { requestId, instanceId: this.instanceId });
             result = await this.handleHealthCheck();
@@ -3840,6 +3861,7 @@ export class TodoMcpServer {
                 'register_capabilities',
                 'escalate_overdue_tasks',
                 'list_audit_logs',
+                'list_security_events',
                 'health_check',
                 'broadcast_message',
                 'collaboration_metrics',
@@ -4533,6 +4555,20 @@ export class TodoMcpServer {
     const summary = lines.length
       ? `Found ${items.length} audit log entry(ies):\n${lines.join('\n')}`
       : 'No audit log entries found.';
+    return this.toToolResponse(summary, result);
+  }
+
+  private async handleListSecurityEvents(args: any) {
+    const result = await this.apiClient.listSecurityEvents(args);
+    const items = result?.items || [];
+    const lines = items.map((e: any) => {
+      const agent = e.agent_id ? ` Agent#${e.agent_id}` : '';
+      const run = e.workflow_run_id ? ` run#${e.workflow_run_id}` : '';
+      return `  • [${e.occurred_at}] ${e.severity} ${e.event_type}${agent}${run} — ${e.title}`;
+    });
+    const summary = lines.length
+      ? `Found ${items.length} security event(s) (total=${result?.pagination?.total ?? items.length}):\n${lines.join('\n')}`
+      : 'No security events found.';
     return this.toToolResponse(summary, result);
   }
 
