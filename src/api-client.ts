@@ -1323,6 +1323,23 @@ export class TodoApiClient {
   }
 
   /**
+   * Step-level real-time console for a workflow run: aggregates step runs with
+   * sandbox executions, effective params, recent logs, and conflicts.
+   */
+  async getWorkflowRunConsole(args: { run_id: number; log_limit?: number }): Promise<any> {
+    logger.info(`[API_CLIENT] Getting workflow run console ${args.run_id}`);
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get(`agents/workflow-runs/${args.run_id}/console`, {
+        params: this.compactParams({
+          log_limit: args.log_limit,
+        }),
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, `getWorkflowRunConsole(${args.run_id})`);
+  }
+
+  /**
    * Cancel a running workflow.
    */
   async cancelWorkflowRun(args: { run_id: number }): Promise<import('./types.js').WorkflowRunItem> {

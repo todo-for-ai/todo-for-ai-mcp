@@ -1316,6 +1316,18 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_run_console',
+          description: 'Step-level real-time console for a workflow run. Aggregates each step run with its sandbox execution, effective params (runtime overrides merged with definition), recent run logs, duration, and any conflicts tied to the run — a single payload for monitoring/intervening on a running workflow.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              run_id: { type: 'integer', description: 'Workflow run ID' },
+              log_limit: { type: 'integer', description: 'Max recent RunLog entries per step (1-50, default 5)' },
+            },
+            required: ['run_id'],
+          },
+        },
+        {
           name: 'cancel_workflow_run',
           description: 'Cancel a running workflow. All pending/running steps are cancelled.',
           inputSchema: {
@@ -3207,6 +3219,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowRun(args);
             break;
 
+          case 'get_workflow_run_console':
+            logger.info(`[MCP_SERVER] Executing get_workflow_run_console`, { requestId, instanceId: this.instanceId, runId: args?.run_id });
+            result = await this.handleGetWorkflowRunConsole(args);
+            break;
+
           case 'cancel_workflow_run':
             logger.info(`[MCP_SERVER] Executing cancel_workflow_run`, { requestId, instanceId: this.instanceId, runId: args?.run_id });
             result = await this.handleCancelWorkflowRun(args);
@@ -3814,6 +3831,7 @@ export class TodoMcpServer {
                 'launch_workflow',
                 'list_workflow_runs',
                 'get_workflow_run',
+                'get_workflow_run_console',
                 'cancel_workflow_run',
                 'pause_workflow_run',
                 'resume_workflow_run',
@@ -4418,6 +4436,40 @@ export class TodoMcpServer {
       return `  • ${sr.step_key}: ${sr.status}${agent}${task}`;
     });
     const summary = `Workflow run #${result.id} (status: ${result.status})\n${lines.join('\n')}`;
+    return this.toToolResponse(summary, result);
+  }
+
+  private async handleGetWorkflowRunConsole(args: any) {
+    const result = await this.apiClient.getWorkflowRunConsole(args);
+    const wf = result?.workflow_run || {};
+    const steps = result?.steps || [];
+    const sm = result?.summary || {};
+    const conflicts = result?.conflicts || [];
+    const stepLines = steps.map((s: any) => {
+      const sr = s.step_run || {};
+      const eff = s.effective_params || {};
+      const overrides = Object.keys(sr.runtime_overrides || {}).length
+        ? ` [overrides: ${Object.keys(sr.runtime_overrides).join(',')}]`
+        : '';
+      const sb = s.sandbox_execution ? ` 🛡️exec#${s.sandbox_execution.id}:${s.sandbox_execution.status}` : '';
+      const dur = (s.duration_seconds != null) ? ` ${(s.duration_seconds as number).toFixed(0)}s` : '';
+      const logs = (s.recent_logs || []).length
+        ? ` logs:${(s.recent_logs as any[]).length}`
+        : '';
+      const agent = sr.agent_id ? ` (Agent #${sr.agent_id})` : '';
+      return `  • ${sr.step_key}: ${sr.status}${agent}${sb}${dur}${overrides}${logs}`;
+    });
+    const conflictLines = conflicts.length
+      ? conflicts.map((c: any) => `    ⚠ ${c.title || c.conflict_type} [${c.status}/${c.severity}]`)
+      : ['    (none)'];
+    const summary = [
+      `Console — Workflow run #${wf.id} (status: ${wf.status})`,
+      `Progress: ${sm.progress_percent ?? 0}% | total=${sm.total_steps ?? 0} running=${sm.running_count ?? 0} failed=${sm.failed_count ?? 0} pending=${sm.pending_count ?? 0}`,
+      'Steps:',
+      ...stepLines,
+      'Conflicts:',
+      ...conflictLines,
+    ].join('\n');
     return this.toToolResponse(summary, result);
   }
 
