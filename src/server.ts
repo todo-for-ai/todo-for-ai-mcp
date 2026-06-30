@@ -2804,6 +2804,30 @@ export class TodoMcpServer {
           description: 'Aggregate conflict stats for the current user: totals, active count, breakdowns by type/status/severity.',
           inputSchema: { type: 'object', properties: {} },
         },
+        {
+          name: 'list_sandbox_templates',
+          description: 'List preset sandbox policy templates (read_only_research, code_generation, data_analysis, full_autonomy, sandboxed_review).',
+          inputSchema: { type: 'object', properties: {} },
+        },
+        {
+          name: 'instantiate_sandbox_template',
+          description: 'Create a sandbox policy from a preset template, optionally overriding fields and binding to an agent.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              template_key: { type: 'string', description: 'Template key (e.g. code_generation)' },
+              name: { type: 'string', description: 'Override sandbox name' },
+              agent_id: { type: 'integer', description: 'Agent to bind to (optional)' },
+              overrides: { type: 'object', description: 'Field overrides (allowed_tools, timeout_seconds, etc.)' },
+            },
+            required: ['template_key'],
+          },
+        },
+        {
+          name: 'auto_resolve_conflicts',
+          description: 'Maintenance: scan for conflicts and auto-resolve low-severity ones (INFO/WARNING) using their suggested strategy if it is safe (auto_retry/least_loaded). CRITICAL conflicts are never auto-resolved.',
+          inputSchema: { type: 'object', properties: {} },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -3725,6 +3749,21 @@ export class TodoMcpServer {
             result = await this.handleGetConflictsDashboard(args);
             break;
 
+          case 'list_sandbox_templates':
+            logger.info(`[MCP_SERVER] Executing list_sandbox_templates`, { requestId, instanceId: this.instanceId });
+            result = await this.handleListSandboxTemplates(args);
+            break;
+
+          case 'instantiate_sandbox_template':
+            logger.info(`[MCP_SERVER] Executing instantiate_sandbox_template`, { requestId, instanceId: this.instanceId, templateKey: args?.template_key });
+            result = await this.handleInstantiateSandboxTemplate(args);
+            break;
+
+          case 'auto_resolve_conflicts':
+            logger.info(`[MCP_SERVER] Executing auto_resolve_conflicts`, { requestId, instanceId: this.instanceId });
+            result = await this.handleAutoResolveConflicts(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -3878,7 +3917,10 @@ export class TodoMcpServer {
                 'resolve_conflict',
                 'acknowledge_conflict',
                 'ignore_conflict',
-                'get_conflicts_dashboard'
+                'get_conflicts_dashboard',
+                'list_sandbox_templates',
+                'instantiate_sandbox_template',
+                'auto_resolve_conflicts'
               ]
             });
             throw error;
@@ -5394,6 +5436,37 @@ export class TodoMcpServer {
       `按类型: ${Object.entries(byType).map(([k, v]) => `${k}=${v}`).join(', ')}\n` +
       `按状态: ${Object.entries(byStatus).map(([k, v]) => `${k}=${v}`).join(', ')}\n` +
       `按严重度: ${Object.entries(bySev).map(([k, v]) => `${k}=${v}`).join(', ')}`,
+      result,
+    );
+  }
+
+  private async handleListSandboxTemplates(args: any) {
+    const result = await this.apiClient.listSandboxTemplates();
+    const templates = result?.data?.templates || result?.templates || [];
+    return this.toToolResponse(
+      `沙盒策略模板 (共 ${templates.length} 个):\n` +
+      templates.map((t: any) => `• ${t.key} — ${t.name} [${t.security_level}]: ${t.description}`).join('\n'),
+      result,
+    );
+  }
+
+  private async handleInstantiateSandboxTemplate(args: any) {
+    const payload: Record<string, any> = {};
+    if (args?.name) payload.name = args.name;
+    if (args?.agent_id) payload.agent_id = args.agent_id;
+    if (args?.overrides) payload.overrides = args.overrides;
+    const result = await this.apiClient.instantiateSandboxTemplate(args?.template_key, payload);
+    const s = result?.data?.sandbox || result?.data || result;
+    return this.toToolResponse(`已从模板 "${args?.template_key}" 创建沙盒策略 #${s?.id} "${s?.name}" [${s?.security_level}]`, result);
+  }
+
+  private async handleAutoResolveConflicts(args: any) {
+    const result = await this.apiClient.autoResolveConflicts();
+    const d = result?.data || result;
+    const resolved = d?.auto_resolved || 0;
+    const skipped = d?.skipped || 0;
+    return this.toToolResponse(
+      `冲突自动解决完成: 检测到 ${d?.detected || 0} 个新冲突, 自动解决 ${resolved} 个, 跳过 ${skipped} 个`,
       result,
     );
   }

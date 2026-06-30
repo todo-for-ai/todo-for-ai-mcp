@@ -2353,6 +2353,30 @@ export class TodoApiClient {
     }, 'getConflictsDashboard');
   }
 
+  async listSandboxTemplates(): Promise<any> {
+    logger.info(`[API_CLIENT] Listing sandbox templates`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/sandbox-templates');
+      return this.unwrapApiData<any>(response.data);
+    }, 'listSandboxTemplates');
+  }
+
+  async instantiateSandboxTemplate(templateKey: string, data: Record<string, any>): Promise<any> {
+    logger.info(`[API_CLIENT] Instantiating sandbox template ${templateKey}`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.post(`agents/sandbox-templates/${encodeURIComponent(templateKey)}/instantiate`, data);
+      return this.unwrapApiData<any>(response.data);
+    }, `instantiateSandboxTemplate(${templateKey})`);
+  }
+
+  async autoResolveConflicts(): Promise<any> {
+    logger.info(`[API_CLIENT] Auto-resolving conflicts`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.post('agents/maintenance/auto-resolve-conflicts', {});
+      return this.unwrapApiData<any>(response.data);
+    }, 'autoResolveConflicts');
+  }
+
   /**
    * Test connection to the Todo API
    */
