@@ -295,6 +295,264 @@ Get detailed project information including statistics and recent tasks.
 }
 ```
 
+### 6. list_agents
+
+List Agent identities available to the current user.
+
+Agent collaboration tools return a short operational summary first, followed by a `JSON:` block with the complete API response. Use the summary for the next action and the JSON block for exact IDs, states, lease timestamps, match scores, and event payloads.
+
+**Parameters:**
+- `status` (string, optional): Filter by Agent status (`active`, `paused`, `offline`, `disabled`)
+- `search` (string, optional): Search Agent name or description
+- `page` (integer, optional): Page number (default: 1)
+- `per_page` (integer, optional): Page size (default: 20)
+
+**Example:**
+```json
+{
+  "status": "active",
+  "per_page": 20
+}
+```
+
+### 7. create_agent
+
+Create an Agent identity and declare its collaboration capabilities.
+
+**Parameters:**
+- `name` (string, required): Agent display name
+- `description` (string, optional): Agent purpose or operating notes
+- `kind` (string, optional): Agent kind (`assistant`, `autonomous`, `coordinator`, `external`; default: `assistant`)
+- `status` (string, optional): Initial Agent status (`active`, `paused`, `offline`, `disabled`; default: `active`)
+- `provider` (string, optional): Provider name
+- `model` (string, optional): Model or runtime identifier
+- `capabilities` (array of strings, optional): Capability keywords used for automatic task matching
+- `config` (object, optional): Agent configuration metadata
+
+**Example:**
+```json
+{
+  "name": "Frontend Builder",
+  "kind": "autonomous",
+  "provider": "openai",
+  "model": "gpt-5-codex",
+  "capabilities": ["frontend", "react", "typescript", "ui"]
+}
+```
+
+### 8. update_agent
+
+Update an Agent identity, status, model metadata, or capabilities.
+
+**Parameters:**
+- `agent_id` (integer, required): ID of the Agent
+- `name` (string, optional): Agent display name
+- `description` (string, optional): Agent purpose or operating notes
+- `kind` (string, optional): Agent kind (`assistant`, `autonomous`, `coordinator`, `external`)
+- `status` (string, optional): Agent status (`active`, `paused`, `offline`, `disabled`)
+- `provider` (string, optional): Provider name
+- `model` (string, optional): Model or runtime identifier
+- `capabilities` (array of strings, optional): Capability keywords used for automatic task matching
+- `config` (object, optional): Agent configuration metadata
+
+**Example:**
+```json
+{
+  "agent_id": 1,
+  "status": "active",
+  "capabilities": ["frontend", "react", "typescript", "review"]
+}
+```
+
+### 9. heartbeat_agent
+
+Record an Agent heartbeat and optionally update its availability status.
+
+**Parameters:**
+- `agent_id` (integer, required): ID of the Agent
+- `status` (string, optional): New Agent status (`active`, `paused`, `offline`, `disabled`)
+
+**Example:**
+```json
+{
+  "agent_id": 1,
+  "status": "active"
+}
+```
+
+### 10. list_review_queue
+
+List Agent assignments that need human feedback or final review.
+
+For `human_feedback` items, resume the assignment with `update_task_assignment` using `state: "running"`, `task_status: "in_progress"`, and `feedback_content` so the worker Agent receives the human response. For `final_review` items, approve with `state: "done"` and `task_status: "done"`, or send changes back with `state: "running"` plus `feedback_content`.
+
+**Parameters:**
+- `action` (string, optional): Filter queue by `all`, `human_feedback`, or `final_review` (default: `all`)
+- `page` (integer, optional): Page number (default: 1)
+- `per_page` (integer, optional): Page size (default: 20)
+
+**Example:**
+```json
+{
+  "action": "final_review",
+  "per_page": 20
+}
+```
+
+### 11. list_agent_assignments
+
+List task assignments for an Agent.
+
+**Parameters:**
+- `agent_id` (integer, required): ID of the Agent
+- `state` (string, optional): Assignment state filter
+- `page` (integer, optional): Page number (default: 1)
+- `per_page` (integer, optional): Page size (default: 20)
+
+**Example:**
+```json
+{
+  "agent_id": 1,
+  "state": "running"
+}
+```
+
+### 12. list_task_assignments
+
+List Agent assignments for a task. Use `state: "active"` to see current non-terminal assignments with live leases.
+
+**Parameters:**
+- `task_id` (integer, required): ID of the task
+- `state` (string, optional): Assignment state filter, or `active`
+- `page` (integer, optional): Page number (default: 1)
+- `per_page` (integer, optional): Page size (default: 20)
+
+**Example:**
+```json
+{
+  "task_id": 42,
+  "state": "active"
+}
+```
+
+### 13. list_task_events
+
+List collaboration events for a task so Agents can inspect handoffs, claims, review requests, assignment updates, and lease expirations.
+
+**Parameters:**
+- `task_id` (integer, required): ID of the task
+- `page` (integer, optional): Page number (default: 1)
+- `per_page` (integer, optional): Page size (default: 20)
+
+**Example:**
+```json
+{
+  "task_id": 42,
+  "per_page": 20
+}
+```
+
+### 14. claim_agent_task
+
+Claim a specific task, or the next claimable task, for an Agent. Claiming creates an assignment, starts an Agent run, and records a task collaboration event.
+
+**Parameters:**
+- `agent_id` (integer, required): ID of the Agent
+- `task_id` (integer, optional): Specific task ID to claim
+- `project_id` (integer, optional): Project filter when claiming the next available task
+- `lease_seconds` (integer, optional): Lease duration in seconds (default: 1800)
+- `match_capabilities` (boolean, optional): Prefer tasks whose tags or text match the Agent capabilities when claiming automatically (default: true)
+- `dispatch_source` (string, optional): Set to `human` when manually dispatching a specific task to the Agent
+- `dispatch_notes` (string, optional): Notes stored in `run_metadata.dispatch_notes` for a manual dispatch
+- `run_metadata` (object, optional): Runtime metadata
+
+**Example:**
+```json
+{
+  "agent_id": 1,
+  "project_id": 10,
+  "lease_seconds": 1800,
+  "match_capabilities": true
+}
+```
+
+Manual dispatch example:
+```json
+{
+  "agent_id": 1,
+  "task_id": 42,
+  "lease_seconds": 1800,
+  "dispatch_source": "human",
+  "dispatch_notes": "Focus on the API contract and update tests before marking review."
+}
+```
+
+### 15. update_agent_assignment
+
+Update an Agent assignment state, progress, feedback, lease, or execution result. Marking an assignment as `done` moves the task to `review` so a human can approve the final completion.
+
+**Parameters:**
+- `agent_id` (integer, required): ID of the Agent
+- `assignment_id` (integer, required): ID of the assignment
+- `state` (string, optional): New assignment state
+- `progress_rate` (integer, optional): Progress percent from 0 to 100
+- `notes` (string, optional): Internal assignment notes
+- `feedback_content` (string, optional): Human-readable task feedback
+- `output_summary` (string, optional): Execution output summary
+- `error` (string, optional): Execution error details
+- `lease_seconds` (integer, optional): Extend lease by this duration in seconds
+- `task_status` (string, optional): Optional task status override
+- `run_metadata` (object, optional): Runtime metadata
+
+**Example:**
+```json
+{
+  "agent_id": 1,
+  "assignment_id": 42,
+  "state": "done",
+  "progress_rate": 100,
+  "feedback_content": "Implementation completed and ready for review."
+}
+```
+
+### 16. update_task_assignment
+
+Update a task assignment as the current user or coordinator. Use this with items from `list_review_queue` to approve final review, resume work, cancel an assignment, or add human feedback without acting as the worker Agent.
+
+**Parameters:**
+- `task_id` (integer, required): ID of the task
+- `assignment_id` (integer, required): ID of the assignment
+- `state` (string, optional): New assignment state
+- `progress_rate` (integer, optional): Progress percent from 0 to 100
+- `notes` (string, optional): Internal assignment notes
+- `feedback_content` (string, optional): Human-readable task feedback
+- `output_summary` (string, optional): Execution output summary
+- `error` (string, optional): Execution error details
+- `lease_seconds` (integer, optional): Extend lease by this duration in seconds
+- `task_status` (string, optional): Optional task status override
+- `run_metadata` (object, optional): Runtime metadata
+
+**Examples:**
+```json
+{
+  "task_id": 42,
+  "assignment_id": 7,
+  "state": "done",
+  "progress_rate": 100,
+  "task_status": "done"
+}
+```
+
+```json
+{
+  "task_id": 42,
+  "assignment_id": 7,
+  "state": "running",
+  "task_status": "in_progress",
+  "feedback_content": "Please address the review comments and continue."
+}
+```
+
 ## Development
 
 ### Prerequisites
