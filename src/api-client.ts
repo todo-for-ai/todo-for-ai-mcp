@@ -2488,6 +2488,16 @@ export class TodoApiClient {
     }, 'listOrchestratorHistory');
   }
 
+  async orchestratorDailyTrend(args?: { triggered_by?: string; since?: string; until?: string }): Promise<any> {
+    logger.info('[API_CLIENT] Fetching orchestrator daily trend', args);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/maintenance/orchestrator/daily-trend', {
+        params: this.compactParams(args || {}),
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'orchestratorDailyTrend');
+  }
+
   /**
    * Test connection to the Todo API
    */

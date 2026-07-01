@@ -2928,6 +2928,18 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'orchestrator_daily_trend',
+          description: 'Daily aggregation of orchestration runs, aligned with the security events daily-trend time dimension so the two can be rendered on a unified timeline. Each day includes runs, manual/scheduler split, triggers fired, conflicts resolved, errors, and avg duration.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              triggered_by: { type: 'string', description: 'Filter by trigger source: manual | scheduler' },
+              since: { type: 'string', description: 'ISO date/datetime lower bound (inclusive)' },
+              until: { type: 'string', description: 'ISO date/datetime upper bound (inclusive)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -3904,6 +3916,11 @@ export class TodoMcpServer {
             result = await this.handleListOrchestratorHistory(args);
             break;
 
+          case 'orchestrator_daily_trend':
+            logger.info(`[MCP_SERVER] Executing orchestrator_daily_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleOrchestratorDailyTrend(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -4068,7 +4085,8 @@ export class TodoMcpServer {
                 'auto_resolve_conflicts',
                 'orchestrate',
                 'get_orchestrator_status',
-                'list_orchestrator_history'
+                'list_orchestrator_history',
+                'orchestrator_daily_trend'
               ]
             });
             throw error;
@@ -5743,6 +5761,21 @@ export class TodoMcpServer {
     const summary = lines.length
       ? `编排历史 (${items.length} 条, 均耗时 ${trend.avg_duration ?? 0}s, 累计触发 ${trend.total_triggers_fired ?? 0}, 累计解决冲突 ${trend.total_conflicts_resolved ?? 0}, 累计错误 ${trend.total_errors ?? 0}):\n${lines.join('\n')}`
       : '无编排历史记录。';
+    return this.toToolResponse(summary, result);
+  }
+
+  private async handleOrchestratorDailyTrend(args: any) {
+    const result = await this.apiClient.orchestratorDailyTrend(args);
+    const d = result?.data || result;
+    const days = d?.days || [];
+    const totals = d?.totals || {};
+    const lines = days.map((day: any) => {
+      const src = `${day.manual_runs}手/${day.scheduler_runs}调`;
+      return `  • ${day.date}: ${day.runs} 次 (${src}) · 触发 ${day.triggers_fired} · 解决冲突 ${day.conflicts_resolved} · 错误 ${day.errors} · 均 ${day.avg_duration}s`;
+    });
+    const summary = lines.length
+      ? `编排按天趋势 (${days.length} 天, 共 ${totals.runs ?? 0} 次, 累计触发 ${totals.triggers_fired ?? 0}, 累计解决冲突 ${totals.conflicts_resolved ?? 0}, 累计错误 ${totals.errors ?? 0}):\n${lines.join('\n')}`
+      : '无编排按天趋势数据。';
     return this.toToolResponse(summary, result);
   }
 
