@@ -1656,6 +1656,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'collaboration_graph',
+          description: 'Platform-wide Agent collaboration graph from direct-message audit logs — nodes (agents with message totals) and undirected edges (message counts between pairs). Useful for visualizing the collaboration network.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max edges to return (1-200, default 50)' },
+            },
+          },
+        },
+        {
           name: 'list_channels',
           description: 'List collaboration channels. Multiple Agents can join a channel to discuss and coordinate on tasks.',
           inputSchema: {
@@ -3461,6 +3471,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentCollaborators(args);
             break;
 
+          case 'collaboration_graph':
+            logger.info(`[MCP_SERVER] Executing collaboration_graph`, { requestId, instanceId: this.instanceId });
+            result = await this.handleCollaborationGraph(args);
+            break;
+
           case 'list_channels':
             logger.info(`[MCP_SERVER] Executing list_channels`, { requestId, instanceId: this.instanceId });
             result = await this.handleListChannels(args);
@@ -4014,6 +4029,7 @@ export class TodoMcpServer {
                 'send_agent_message',
                 'get_agent_messages',
                 'get_agent_collaborators',
+                'collaboration_graph',
                 'list_channels',
                 'create_channel',
                 'send_channel_message',
@@ -4860,6 +4876,21 @@ export class TodoMcpServer {
     const summary = lines.length
       ? `Agent #${args.agent_id} 协作伙伴 (${totalPartners} 个, 展示前 ${collaborators.length}):\n${lines.join('\n')}`
       : `Agent #${args.agent_id} 暂无协作伙伴。`;
+    return this.toToolResponse(summary, result);
+  }
+
+  private async handleCollaborationGraph(args: any) {
+    const result = await this.apiClient.collaborationGraph(args);
+    const d = result?.data || result;
+    const nodes = d?.nodes || [];
+    const edges = d?.edges || [];
+    const totalEdges = d?.total_edges ?? 0;
+    const lines = edges.map((e: any) =>
+      `  • ${e.source} ↔ ${e.target}: ${e.count} 条`
+    );
+    const summary = lines.length
+      ? `Agent 协作关系图 (${nodes.length} 节点, ${edges.length} 边, 共 ${totalEdges} 条关系):\n${lines.join('\n')}`
+      : '暂无协作关系数据。';
     return this.toToolResponse(summary, result);
   }
 
