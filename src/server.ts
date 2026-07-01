@@ -1662,6 +1662,8 @@ export class TodoMcpServer {
             type: 'object',
             properties: {
               limit: { type: 'integer', description: 'Max edges to return (1-200, default 50)' },
+              since: { type: 'string', description: 'ISO date/datetime lower bound (inclusive)' },
+              until: { type: 'string', description: 'ISO date/datetime upper bound (inclusive)' },
             },
           },
         },
@@ -4885,9 +4887,14 @@ export class TodoMcpServer {
     const nodes = d?.nodes || [];
     const edges = d?.edges || [];
     const totalEdges = d?.total_edges ?? 0;
-    const lines = edges.map((e: any) =>
-      `  • ${e.source} ↔ ${e.target}: ${e.count} 条`
-    );
+    const lines = edges.map((e: any) => {
+      const fwd = e.source_to_target ?? 0;
+      const rev = e.target_to_source ?? 0;
+      const dir = fwd && rev
+        ? `${e.source}→${e.target}:${fwd} ${e.target}→${e.source}:${rev}`
+        : `${e.source}↔${e.target}`;
+      return `  • ${dir}: 共 ${e.count} 条`;
+    });
     const summary = lines.length
       ? `Agent 协作关系图 (${nodes.length} 节点, ${edges.length} 边, 共 ${totalEdges} 条关系):\n${lines.join('\n')}`
       : '暂无协作关系数据。';
