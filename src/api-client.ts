@@ -1452,7 +1452,7 @@ export class TodoApiClient {
   /**
    * Unified security event feed: sandbox violations + conflicts + security audit.
    */
-  async listSecurityEvents(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; page?: number; per_page?: number }): Promise<any> {
+  async listSecurityEvents(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; until?: string; page?: number; per_page?: number }): Promise<any> {
     logger.info('[API_CLIENT] Listing security events', args);
 
     return this.executeWithRetry(async () => {
@@ -1461,6 +1461,23 @@ export class TodoApiClient {
       });
       return this.unwrapApiData<any>(response.data);
     }, 'listSecurityEvents');
+  }
+
+  /**
+   * Export the unified security event feed as CSV text (same filters as list).
+   */
+  async exportSecurityEvents(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; until?: string }): Promise<string> {
+    logger.info('[API_CLIENT] Exporting security events', args);
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/security/events/export', {
+        params: this.compactParams(args || {}),
+        responseType: 'text',
+        transformResponse: (data: any) => data,
+      });
+      // When responseType is text, axios returns the raw string in response.data.
+      return typeof response.data === 'string' ? response.data : String(response.data ?? '');
+    }, 'exportSecurityEvents');
   }
 
   /**

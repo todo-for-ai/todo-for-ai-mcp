@@ -1449,8 +1449,24 @@ export class TodoMcpServer {
               event_type: { type: 'string', description: 'Filter by event source type: sandbox_violation | conflict | audit' },
               severity: { type: 'string', description: 'Filter by severity: INFO | WARNING | CRITICAL' },
               since: { type: 'string', description: 'Only events after this ISO 8601 datetime' },
+              until: { type: 'string', description: 'Only events before this ISO 8601 datetime (use with since for a range)' },
               page: { type: 'integer', description: 'Page number' },
               per_page: { type: 'integer', description: 'Items per page' },
+            },
+          },
+        },
+        {
+          name: 'export_security_events',
+          description: 'Export the unified security event feed as CSV text (up to 1000 rows). Accepts the same filters as list_security_events (agent_id, workflow_run_id, event_type, severity, since, until). Returns CSV with columns: occurred_at, event_type, severity, agent_id, workflow_run_id, source, source_id, title, detail.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              agent_id: { type: 'integer', description: 'Filter to events involving this agent' },
+              workflow_run_id: { type: 'integer', description: 'Filter to events tied to this workflow run' },
+              event_type: { type: 'string', description: 'Filter by event source type: sandbox_violation | conflict | audit' },
+              severity: { type: 'string', description: 'Filter by severity: INFO | WARNING | CRITICAL' },
+              since: { type: 'string', description: 'Only events after this ISO 8601 datetime' },
+              until: { type: 'string', description: 'Only events before this ISO 8601 datetime' },
             },
           },
         },
@@ -3306,6 +3322,11 @@ export class TodoMcpServer {
             result = await this.handleListSecurityEvents(args);
             break;
 
+          case 'export_security_events':
+            logger.info(`[MCP_SERVER] Executing export_security_events`, { requestId, instanceId: this.instanceId });
+            result = await this.handleExportSecurityEvents(args);
+            break;
+
           case 'health_check':
             logger.info(`[MCP_SERVER] Executing health_check`, { requestId, instanceId: this.instanceId });
             result = await this.handleHealthCheck();
@@ -3898,6 +3919,7 @@ export class TodoMcpServer {
                 'escalate_overdue_tasks',
                 'list_audit_logs',
                 'list_security_events',
+                'export_security_events',
                 'health_check',
                 'broadcast_message',
                 'collaboration_metrics',
@@ -4609,6 +4631,15 @@ export class TodoMcpServer {
       ? `Found ${items.length} security event(s) (total=${result?.pagination?.total ?? items.length}):\n${lines.join('\n')}`
       : 'No security events found.';
     return this.toToolResponse(summary, result);
+  }
+
+  private async handleExportSecurityEvents(args: any) {
+    const csv = await this.apiClient.exportSecurityEvents(args);
+    const rowCount = csv ? csv.trim().split('\n').length - 1 : 0;
+    const summary = rowCount > 0
+      ? `Exported ${rowCount} security event(s) as CSV (columns: occurred_at, event_type, severity, agent_id, workflow_run_id, source, source_id, title, detail).`
+      : 'No security events matched the filters; CSV header only.';
+    return this.toToolResponse(summary, { csv, row_count: rowCount });
   }
 
   private async handleHealthCheck() {
