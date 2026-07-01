@@ -2431,6 +2431,19 @@ export class TodoApiClient {
   }
 
   /**
+   * Recent orchestration run records + trend aggregates.
+   */
+  async listOrchestratorHistory(args?: { limit?: number; triggered_by?: string }): Promise<any> {
+    logger.info('[API_CLIENT] Listing orchestrator history', args);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/maintenance/orchestrator/history', {
+        params: this.compactParams(args || {}),
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'listOrchestratorHistory');
+  }
+
+  /**
    * Test connection to the Todo API
    */
   async testConnection(): Promise<boolean> {

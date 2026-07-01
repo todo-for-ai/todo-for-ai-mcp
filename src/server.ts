@@ -2866,6 +2866,17 @@ export class TodoMcpServer {
           description: 'Return the state of the built-in orchestrator scheduler (enabled/disabled) and the last orchestration cycle summary, if the scheduler is enabled via ORCHESTRATOR_ENABLED.',
           inputSchema: { type: 'object', properties: {} },
         },
+        {
+          name: 'list_orchestrator_history',
+          description: 'Return recent orchestration run records for trend analysis — per-run stats (stale agents, timed-out steps, triggers fired, conflicts auto-resolved, duration, errors, triggered_by manual|scheduler) plus trend aggregates.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max records to return (1-100, default 20)' },
+              triggered_by: { type: 'string', description: 'Filter by trigger source: manual | scheduler' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -3822,6 +3833,11 @@ export class TodoMcpServer {
             result = await this.handleGetOrchestratorStatus(args);
             break;
 
+          case 'list_orchestrator_history':
+            logger.info(`[MCP_SERVER] Executing list_orchestrator_history`, { requestId, instanceId: this.instanceId });
+            result = await this.handleListOrchestratorHistory(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -3982,7 +3998,8 @@ export class TodoMcpServer {
                 'instantiate_sandbox_template',
                 'auto_resolve_conflicts',
                 'orchestrate',
-                'get_orchestrator_status'
+                'get_orchestrator_status',
+                'list_orchestrator_history'
               ]
             });
             throw error;
@@ -5606,6 +5623,21 @@ export class TodoMcpServer {
       ? `上次运行: ${last.summary} (耗时 ${last.duration_seconds}s)`
       : '上次运行: 无';
     return this.toToolResponse(`编排调度器状态: ${enabled}\n${lastLine}`, result);
+  }
+
+  private async handleListOrchestratorHistory(args: any) {
+    const result = await this.apiClient.listOrchestratorHistory(args);
+    const d = result?.data || result;
+    const items = d?.items || [];
+    const trend = d?.trend || {};
+    const lines = items.map((r: any) => {
+      const errs = r.error_count > 0 ? ` ⚠${r.error_count}err` : '';
+      return `  • [${r.created_at}] ${r.triggered_by} · ${r.summary}${errs} (${r.duration_seconds}s)`;
+    });
+    const summary = lines.length
+      ? `编排历史 (${items.length} 条, 均耗时 ${trend.avg_duration ?? 0}s, 累计触发 ${trend.total_triggers_fired ?? 0}, 累计解决冲突 ${trend.total_conflicts_resolved ?? 0}, 累计错误 ${trend.total_errors ?? 0}):\n${lines.join('\n')}`
+      : '无编排历史记录。';
+    return this.toToolResponse(summary, result);
   }
 
   async run(): Promise<void> {
