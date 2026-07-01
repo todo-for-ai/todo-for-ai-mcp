@@ -1450,6 +1450,7 @@ export class TodoMcpServer {
               severity: { type: 'string', description: 'Filter by severity: INFO | WARNING | CRITICAL' },
               since: { type: 'string', description: 'Only events after this ISO 8601 datetime' },
               until: { type: 'string', description: 'Only events before this ISO 8601 datetime (use with since for a range)' },
+              search: { type: 'string', description: 'Keyword search (case-insensitive) on event title/detail' },
               page: { type: 'integer', description: 'Page number' },
               per_page: { type: 'integer', description: 'Items per page' },
             },
@@ -1457,7 +1458,7 @@ export class TodoMcpServer {
         },
         {
           name: 'export_security_events',
-          description: 'Export the unified security event feed as CSV text (up to 1000 rows). Accepts the same filters as list_security_events (agent_id, workflow_run_id, event_type, severity, since, until). Returns CSV with columns: occurred_at, event_type, severity, agent_id, workflow_run_id, source, source_id, title, detail.',
+          description: 'Export the unified security event feed as CSV text (up to 1000 rows). Accepts the same filters as list_security_events (agent_id, workflow_run_id, event_type, severity, since, until, search). Returns CSV with columns: occurred_at, event_type, severity, agent_id, workflow_run_id, source, source_id, title, detail.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -1467,6 +1468,7 @@ export class TodoMcpServer {
               severity: { type: 'string', description: 'Filter by severity: INFO | WARNING | CRITICAL' },
               since: { type: 'string', description: 'Only events after this ISO 8601 datetime' },
               until: { type: 'string', description: 'Only events before this ISO 8601 datetime' },
+              search: { type: 'string', description: 'Keyword search (case-insensitive) on event title/detail' },
             },
           },
         },
