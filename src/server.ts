@@ -1490,6 +1490,22 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'security_events_by_agent',
+          description: 'Per-agent aggregation of security events for ranking. Reuses the same filters as list_security_events. Returns agents: [{agent_id, name, total, sandbox_violation, conflict, audit, CRITICAL, WARNING, INFO}] sorted by total desc (top 50). Events without an agent_id are grouped under agent_id=null named "(无 Agent)".',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              agent_id: { type: 'integer', description: 'Filter to events involving this agent' },
+              workflow_run_id: { type: 'integer', description: 'Filter to events tied to this workflow run' },
+              event_type: { type: 'string', description: 'Filter by event source type: sandbox_violation | conflict | audit' },
+              severity: { type: 'string', description: 'Filter by severity: INFO | WARNING | CRITICAL' },
+              since: { type: 'string', description: 'Only events after this ISO 8601 datetime' },
+              until: { type: 'string', description: 'Only events before this ISO 8601 datetime' },
+              search: { type: 'string', description: 'Keyword search (case-insensitive) on event title/detail' },
+            },
+          },
+        },
+        {
           name: 'health_check',
           description: 'Run a full platform health check: expire stale agents, expire stale leases, and escalate overdue tasks. Designed to be called periodically by a cron job. Returns a summary of actions taken.',
           inputSchema: {
@@ -3351,6 +3367,11 @@ export class TodoMcpServer {
             result = await this.handleSecurityEventsDailyTrend(args);
             break;
 
+          case 'security_events_by_agent':
+            logger.info(`[MCP_SERVER] Executing security_events_by_agent`, { requestId, instanceId: this.instanceId });
+            result = await this.handleSecurityEventsByAgent(args);
+            break;
+
           case 'health_check':
             logger.info(`[MCP_SERVER] Executing health_check`, { requestId, instanceId: this.instanceId });
             result = await this.handleHealthCheck();
@@ -3945,6 +3966,7 @@ export class TodoMcpServer {
                 'list_security_events',
                 'export_security_events',
                 'security_events_daily_trend',
+                'security_events_by_agent',
                 'health_check',
                 'broadcast_message',
                 'collaboration_metrics',
@@ -4678,6 +4700,20 @@ export class TodoMcpServer {
     const summary = days.length
       ? `安全事件按天趋势 (${days.length} 天, 累计 沙盒违规 ${totals.sandbox_violation ?? 0}/冲突 ${totals.conflict ?? 0}/审计 ${totals.audit ?? 0}/合计 ${totals.total ?? 0}):\n${lines.join('\n')}`
       : '无安全事件趋势数据。';
+    return this.toToolResponse(summary, result);
+  }
+
+  private async handleSecurityEventsByAgent(args: any) {
+    const result = await this.apiClient.securityEventsByAgent(args);
+    const d = result?.data || result;
+    const agents = d?.agents || [];
+    const lines = agents.map((a: any) => {
+      const name = a.name || (a.agent_id ? `Agent#${a.agent_id}` : '(无 Agent)');
+      return `  • ${name}: 合计 ${a.total} (沙盒违规 ${a.sandbox_violation}/冲突 ${a.conflict}/审计 ${a.audit}, 高危 ${a.CRITICAL}/警告 ${a.WARNING}/普通 ${a.INFO})`;
+    });
+    const summary = agents.length
+      ? `安全事件按 Agent 排行 (前 ${agents.length}):\n${lines.join('\n')}`
+      : '无安全事件按 Agent 聚合数据。';
     return this.toToolResponse(summary, result);
   }
 

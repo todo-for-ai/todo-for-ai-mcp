@@ -1495,6 +1495,20 @@ export class TodoApiClient {
   }
 
   /**
+   * Per-agent aggregation of security events for ranking (same filters as list).
+   */
+  async securityEventsByAgent(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; until?: string; search?: string }): Promise<any> {
+    logger.info('[API_CLIENT] Fetching security events by agent', args);
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/security/events/by-agent', {
+        params: this.compactParams(args || {}),
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'securityEventsByAgent');
+  }
+
+  /**
    * Run a full platform health check.
    */
   async healthCheck(): Promise<{ stale_agents: number; stale_agent_ids: number[]; expired_leases: number; escalated_tasks: number; escalated_task_ids: number[] }> {
