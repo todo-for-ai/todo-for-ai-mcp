@@ -1458,7 +1458,7 @@ export class TodoMcpServer {
         },
         {
           name: 'export_security_events',
-          description: 'Export the unified security event feed as CSV text (up to 1000 rows). Accepts the same filters as list_security_events (agent_id, workflow_run_id, event_type, severity, since, until, search). Returns CSV with columns: occurred_at, event_type, severity, agent_id, workflow_run_id, source, source_id, title, detail.',
+          description: 'Export the unified security event feed as CSV or JSON text (up to 1000 rows). Accepts the same filters as list_security_events (agent_id, workflow_run_id, event_type, severity, since, until, search) plus format (csv | json, default csv). CSV columns: occurred_at, event_type, severity, agent_id, workflow_run_id, source, source_id, title, detail. JSON returns the full normalized event objects.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -1469,6 +1469,7 @@ export class TodoMcpServer {
               since: { type: 'string', description: 'Only events after this ISO 8601 datetime' },
               until: { type: 'string', description: 'Only events before this ISO 8601 datetime' },
               search: { type: 'string', description: 'Keyword search (case-insensitive) on event title/detail' },
+              format: { type: 'string', description: 'Export format: csv (default) | json' },
             },
           },
         },

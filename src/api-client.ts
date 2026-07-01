@@ -1466,7 +1466,7 @@ export class TodoApiClient {
   /**
    * Export the unified security event feed as CSV text (same filters as list).
    */
-  async exportSecurityEvents(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; until?: string; search?: string }): Promise<string> {
+  async exportSecurityEvents(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; until?: string; search?: string; format?: string }): Promise<string> {
     logger.info('[API_CLIENT] Exporting security events', args);
 
     return this.executeWithRetry(async () => {
