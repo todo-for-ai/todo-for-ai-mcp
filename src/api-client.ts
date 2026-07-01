@@ -1655,6 +1655,15 @@ export class TodoApiClient {
     }, `getAgentMessages(${args.agent_id})`);
   }
 
+  async getAgentCollaborators(args: { agent_id: number; limit?: number }): Promise<any> {
+    logger.info(`[API_CLIENT] Getting collaborators for agent ${args.agent_id}`);
+    return this.executeWithRetry(async () => {
+      const params = this.compactParams({ limit: args.limit });
+      const response = await this.client.get(`agents/${args.agent_id}/collaborators`, { params });
+      return this.unwrapApiData<any>(response.data);
+    }, `getAgentCollaborators(${args.agent_id})`);
+  }
+
   // --- Collaboration Channels ---
   async listChannels(args?: { project_id?: number; task_id?: number }): Promise<any[]> {
     logger.info(`[API_CLIENT] Listing collaboration channels`);

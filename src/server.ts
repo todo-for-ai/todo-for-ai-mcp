@@ -1644,6 +1644,18 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_collaborators',
+          description: 'Aggregate an Agent\'s collaboration partners from direct-message audit logs — top partners by message count, with sent/received split. Useful for understanding which Agents collaborate most with this one.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              agent_id: { type: 'integer', description: 'Agent ID' },
+              limit: { type: 'integer', description: 'Max partners to return (1-50, default 10)' },
+            },
+            required: ['agent_id'],
+          },
+        },
+        {
           name: 'list_channels',
           description: 'List collaboration channels. Multiple Agents can join a channel to discuss and coordinate on tasks.',
           inputSchema: {
@@ -3444,6 +3456,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentMessages(args);
             break;
 
+          case 'get_agent_collaborators':
+            logger.info(`[MCP_SERVER] Executing get_agent_collaborators`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id });
+            result = await this.handleGetAgentCollaborators(args);
+            break;
+
           case 'list_channels':
             logger.info(`[MCP_SERVER] Executing list_channels`, { requestId, instanceId: this.instanceId });
             result = await this.handleListChannels(args);
@@ -3996,6 +4013,7 @@ export class TodoMcpServer {
                 'timeout_workflow_steps',
                 'send_agent_message',
                 'get_agent_messages',
+                'get_agent_collaborators',
                 'list_channels',
                 'create_channel',
                 'send_channel_message',
@@ -4828,6 +4846,20 @@ export class TodoMcpServer {
     const summary = items.length === 0
       ? `No messages for Agent #${args.agent_id}.`
       : `${items.length} message(s) for Agent #${args.agent_id}.`;
+    return this.toToolResponse(summary, result);
+  }
+
+  private async handleGetAgentCollaborators(args: any) {
+    const result = await this.apiClient.getAgentCollaborators(args);
+    const d = result?.data || result;
+    const collaborators = d?.collaborators || [];
+    const totalPartners = d?.total_partners ?? 0;
+    const lines = collaborators.map((c: any) =>
+      `  • ${c.name} (Agent#${c.agent_id}): 发 ${c.sent} / 收 ${c.received} / 合计 ${c.total}`
+    );
+    const summary = lines.length
+      ? `Agent #${args.agent_id} 协作伙伴 (${totalPartners} 个, 展示前 ${collaborators.length}):\n${lines.join('\n')}`
+      : `Agent #${args.agent_id} 暂无协作伙伴。`;
     return this.toToolResponse(summary, result);
   }
 
