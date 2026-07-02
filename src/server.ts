@@ -2372,6 +2372,17 @@ export class TodoMcpServer {
           inputSchema: { type: 'object', properties: {} },
         },
         {
+          name: 'get_experiences_low_confidence',
+          description: 'List the current user valid experiences with confidence below max_confidence (default 0.5), sorted by confidence ascending. Each entry includes agent_id, domain, task_type, experience_type, confidence, times_reused, key_learnings excerpt. Surfaces weak knowledge entries needing reinforcement or removal.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              max_confidence: { type: 'number', description: 'Confidence threshold (default 0.5)' },
+              limit: { type: 'integer', description: 'Max entries returned (default 20)' },
+            },
+          },
+        },
+        {
           name: 'get_task_stats',
           description: 'Aggregate task lifecycle stats for the current user projects: total, by_status, by_priority, completion/cancellation rates, average lifecycle duration (hours) for done tasks, lifecycle duration buckets (0-1h ... >7d), average completion rate. Reveals throughput bottlenecks and abandonment.',
           inputSchema: { type: 'object', properties: {} },
@@ -3898,6 +3909,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesStats(args);
             break;
 
+          case 'get_experiences_low_confidence':
+            logger.info(`[MCP_SERVER] Executing get_experiences_low_confidence`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesLowConfidence(args);
+            break;
+
           case 'get_task_stats':
             logger.info(`[MCP_SERVER] Executing get_task_stats`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskStats(args);
@@ -4366,6 +4382,7 @@ export class TodoMcpServer {
                 'delete_agent_experience',
                 'recommend_experiences',
                 'get_experiences_stats',
+                'get_experiences_low_confidence',
                 'get_task_stats',
                 'get_workflow_failure_correlation',
                 'get_workflow_failure_correlation_by_step',
@@ -5641,6 +5658,23 @@ export class TodoMcpServer {
         `共享: ${data.shared ?? 0} 条, 累计复用: ${data.total_reuses ?? 0} 次, 平均置信度: ${data.avg_confidence ?? 0}\n` +
         `复用最多(top5): ${topReused.slice(0, 5).map((e: any) => `#${e.id} ${e.domain}/${e.experience_type}(${e.times_reused}次,置信${e.confidence})`).join('; ') || '无'}\n` +
         `域×任务类型矩阵(top5域): ${matrixSummary || '无'}`,
+      result,
+    );
+  }
+
+  private async handleGetExperiencesLowConfidence(args: any) {
+    const maxConfidence = typeof args?.max_confidence === 'number' ? args.max_confidence : 0.5;
+    const limit = typeof args?.limit === 'number' ? args.limit : 20;
+    const result = await this.apiClient.getExperiencesLowConfidence(maxConfidence, limit);
+    const data = result?.data || result || {};
+    const maxConf = data.max_confidence ?? maxConfidence;
+    const items = data.items || [];
+    const lines = items.map((e: any, i: number) =>
+      `${i + 1}. #${e.id} agent=${e.agent_id} ${e.domain}/${e.task_type}/${e.experience_type} 置信度=${e.confidence} 复用=${e.times_reused}次 ${e.key_learnings ? `摘要:${e.key_learnings}` : '无摘要'}`,
+    );
+    return this.toToolResponse(
+      `低置信度经验清单(置信度<${maxConf}): 共 ${items.length} 条\n` +
+        (lines.length ? lines.join('\n') : '暂无低置信度经验'),
       result,
     );
   }

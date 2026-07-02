@@ -2173,6 +2173,16 @@ export class TodoApiClient {
     }, 'getAgentHealthAlerts');
   }
 
+  async getExperiencesLowConfidence(maxConfidence = 0.5, limit = 20): Promise<any> {
+    logger.info(`[API_CLIENT] Getting low-confidence experiences (max=${maxConfidence})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/experiences/low-confidence', {
+        params: { max_confidence: maxConfidence, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getExperiencesLowConfidence');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {
