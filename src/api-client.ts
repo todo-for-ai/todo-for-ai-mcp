@@ -2206,6 +2206,16 @@ export class TodoApiClient {
     }, 'getExperiencesLowConfidence');
   }
 
+  async getExperiencesScatter(limit = 200): Promise<any> {
+    logger.info('[API_CLIENT] Getting experiences scatter points');
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/experiences/scatter', {
+        params: { limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getExperiencesScatter');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {

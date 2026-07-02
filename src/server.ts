@@ -2394,6 +2394,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_experiences_scatter',
+          description: 'Confidence × reuse-count scatter points for the user valid experiences. One point per experience: confidence, times_reused, domain, task_type, experience_type. Reveals whether high-confidence experiences actually get reused more. Caps via limit (default 200, most-reused first).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max points returned (1-500, default 200)' },
+            },
+          },
+        },
+        {
           name: 'get_task_stats',
           description: 'Aggregate task lifecycle stats for the current user projects: total, by_status, by_priority, completion/cancellation rates, average lifecycle duration (hours) for done tasks, lifecycle duration buckets (0-1h ... >7d), average completion rate. Reveals throughput bottlenecks and abandonment.',
           inputSchema: { type: 'object', properties: {} },
@@ -3945,6 +3955,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesLowConfidence(args);
             break;
 
+          case 'get_experiences_scatter':
+            logger.info(`[MCP_SERVER] Executing get_experiences_scatter`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesScatter(args);
+            break;
+
           case 'get_task_stats':
             logger.info(`[MCP_SERVER] Executing get_task_stats`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskStats(args);
@@ -4420,6 +4435,7 @@ export class TodoMcpServer {
                 'recommend_experiences',
                 'get_experiences_stats',
                 'get_experiences_low_confidence',
+                'get_experiences_scatter',
                 'get_task_stats',
                 'get_workflow_failure_correlation',
                 'get_workflow_failure_correlation_by_step',
@@ -5734,6 +5750,38 @@ export class TodoMcpServer {
     return this.toToolResponse(
       `低置信度经验清单(置信度<${maxConf}): 共 ${items.length} 条\n` +
         (lines.length ? lines.join('\n') : '暂无低置信度经验'),
+      result,
+    );
+  }
+
+  private async handleGetExperiencesScatter(args: any) {
+    const limit = typeof args?.limit === 'number' ? args.limit : 200;
+    const result = await this.apiClient.getExperiencesScatter(limit);
+    const data = result?.data || result || {};
+    const points = Array.isArray(data?.points) ? data.points : [];
+    const maxReuses = data?.max_reuses ?? 0;
+    // 按 times_reused 分桶统计，揭示置信度与复用的关系
+    const buckets = { '高复用(≥10)': 0, '中复用(1-9)': 0, '未复用(0)': 0 };
+    let highConfReused = 0; // 置信度≥0.7 且复用≥1
+    let lowConfReused = 0;  // 置信度<0.5 且复用≥1
+    for (const p of points) {
+      const tr = p.times_reused || 0;
+      if (tr >= 10) buckets['高复用(≥10)'] += 1;
+      else if (tr >= 1) buckets['中复用(1-9)'] += 1;
+      else buckets['未复用(0)'] += 1;
+      if (tr >= 1) {
+        if ((p.confidence ?? 0) >= 0.7) highConfReused += 1;
+        else if ((p.confidence ?? 0) < 0.5) lowConfReused += 1;
+      }
+    }
+    const top = points.slice(0, 8).map((p: any, i: number) =>
+      `${i + 1}. #${p.id} ${p.domain}/${p.experience_type} 置信度=${p.confidence} 复用=${p.times_reused}次`,
+    );
+    return this.toToolResponse(
+      `经验置信度×复用散点(共${points.length}点, 最大复用${maxReuses}次):\n` +
+      `复用分布: ${Object.entries(buckets).map(([k, v]: any) => `${k}=${v}`).join(', ')}\n` +
+      `高置信(≥0.7)且被复用: ${highConfReused} / 低置信(<0.5)且被复用: ${lowConfReused}\n` +
+      `复用最多(top8):\n${top.join('\n') || '无'}`,
       result,
     );
   }
