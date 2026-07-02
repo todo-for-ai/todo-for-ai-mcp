@@ -2481,6 +2481,14 @@ export class TodoApiClient {
     }, 'getConflictsByAgent');
   }
 
+  async getConflictsStrategyStats(): Promise<any> {
+    logger.info(`[API_CLIENT] Getting conflicts strategy stats`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/conflicts/strategy-stats');
+      return this.unwrapApiData<any>(response.data);
+    }, 'getConflictsStrategyStats');
+  }
+
   async listSandboxTemplates(): Promise<any> {
     logger.info(`[API_CLIENT] Listing sandbox templates`);
     return this.executeWithRetry(async () => {

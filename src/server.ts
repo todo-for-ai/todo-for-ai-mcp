@@ -2942,6 +2942,11 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_conflicts_strategy_stats',
+          description: 'Resolution strategy effectiveness: per-strategy usage count and recurrence rate (fraction of resolved conflicts whose task later saw another conflict). High recurrence flags strategies that suppress rather than solve.',
+          inputSchema: { type: 'object', properties: {} },
+        },
+        {
           name: 'list_sandbox_templates',
           description: 'List preset sandbox policy templates (read_only_research, code_generation, data_analysis, full_autonomy, sandboxed_review).',
           inputSchema: { type: 'object', properties: {} },
@@ -3969,6 +3974,11 @@ export class TodoMcpServer {
             result = await this.handleGetConflictsByAgent(args);
             break;
 
+          case 'get_conflicts_strategy_stats':
+            logger.info(`[MCP_SERVER] Executing get_conflicts_strategy_stats`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetConflictsStrategyStats(args);
+            break;
+
           case 'list_sandbox_templates':
             logger.info(`[MCP_SERVER] Executing list_sandbox_templates`, { requestId, instanceId: this.instanceId });
             result = await this.handleListSandboxTemplates(args);
@@ -4168,6 +4178,7 @@ export class TodoMcpServer {
                 'get_conflicts_dashboard',
                 'get_conflicts_trend',
                 'get_conflicts_by_agent',
+                'get_conflicts_strategy_stats',
                 'list_sandbox_templates',
                 'instantiate_sandbox_template',
                 'auto_resolve_conflicts',
@@ -5866,6 +5877,16 @@ export class TodoMcpServer {
       .map((it: any) => `• ${it.name || 'Agent'} #${it.agent_id} [${it.kind || '?'}]: 共 ${it.total} (活跃 ${it.active})`)
       .join('\n');
     return this.toToolResponse(`冲突按 Agent 分布 (top ${items.length}):\n${summary || '暂无冲突数据'}`, result);
+  }
+
+  private async handleGetConflictsStrategyStats(args: any) {
+    const result = await this.apiClient.getConflictsStrategyStats();
+    const d = result?.data || result;
+    const items = Array.isArray(d?.items) ? d.items : [];
+    const summary = items
+      .map((it: any) => `• ${it.strategy}: 用 ${it.uses} 次, 复发 ${it.recurrences} (${(it.recurrence_rate * 100).toFixed(0)}%)`)
+      .join('\n');
+    return this.toToolResponse(`冲突解决策略效果:\n${summary || '暂无已解决冲突'}`, result);
   }
 
   private async handleListSandboxTemplates(args: any) {
