@@ -2791,6 +2791,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_sandbox_violations_by_agent',
+          description: 'Per-Agent sandbox violation counts over the last N days, top N by total, enriched with name/kind and a by-violation-type sub-count. Reveals which Agents most frequently attempt disallowed actions.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max number of agents (1-100, default 20)' },
+            },
+          },
+        },
+        {
           name: 'get_step_sandbox_execution',
           description: 'Get the sandboxed execution (if any) bound to a workflow step run. Surfaces the auto-started execution + frozen policy snapshot + violations.',
           inputSchema: {
@@ -3919,6 +3930,11 @@ export class TodoMcpServer {
             result = await this.handleGetSandboxViolationTrend(args);
             break;
 
+          case 'get_sandbox_violations_by_agent':
+            logger.info(`[MCP_SERVER] Executing get_sandbox_violations_by_agent`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetSandboxViolationsByAgent(args);
+            break;
+
           case 'get_step_sandbox_execution':
             logger.info(`[MCP_SERVER] Executing get_step_sandbox_execution`, { requestId, instanceId: this.instanceId, runId: args?.run_id, stepKey: args?.step_key });
             result = await this.handleGetStepSandboxExecution(args);
@@ -4180,6 +4196,7 @@ export class TodoMcpServer {
                 'list_sandbox_executions',
                 'get_sandbox_dashboard',
                 'get_sandbox_violation_trend',
+                'get_sandbox_violations_by_agent',
                 'get_step_sandbox_execution',
                 'report_step_sandbox_violation',
                 'set_step_runtime_override',
@@ -5733,6 +5750,16 @@ export class TodoMcpServer {
       `沙盒违规趋势 (近 ${d?.days || 30} 天): 累计 ${total}\n${recent || '暂无数据'}\n按类型: ${typeLine || '无'}`,
       result,
     );
+  }
+
+  private async handleGetSandboxViolationsByAgent(args: any) {
+    const result = await this.apiClient.getSandboxViolationsByAgent(args);
+    const d = result?.data || result;
+    const items = Array.isArray(d?.items) ? d.items : [];
+    const summary = items
+      .map((it: any) => `• ${it.name || 'Agent'} #${it.agent_id} [${it.kind || '?'}]: ${it.total} 次`)
+      .join('\n');
+    return this.toToolResponse(`沙盒违规按 Agent (近 ${d?.days || 30} 天, top ${items.length}):\n${summary || '暂无违规'}`, result);
   }
 
   private async handleGetStepSandboxExecution(args: any) {
