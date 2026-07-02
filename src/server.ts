@@ -5807,9 +5807,19 @@ export class TodoMcpServer {
     const byType = d?.by_type || {};
     const byStatus = d?.by_status || {};
     const bySev = d?.by_severity || {};
+    const lat = d?.resolution_latency || {};
+    const fmtDur = (s: any) => {
+      if (typeof s !== 'number') return '?';
+      if (s < 60) return `${s.toFixed(0)}s`;
+      if (s < 3600) return `${(s / 60).toFixed(1)}m`;
+      if (s < 86400) return `${(s / 3600).toFixed(1)}h`;
+      return `${(s / 86400).toFixed(1)}d`;
+    };
+    const latLine = lat?.count ? `解决耗时: 均${fmtDur(lat.avg_seconds)} 中位${fmtDur(lat.median_seconds)} 最长${fmtDur(lat.max_seconds)} (${lat.count}个)` : '解决耗时: 暂无';
     return this.toToolResponse(
       `冲突仪表盘:\n` +
       `总数: ${d?.total || 0}, 活跃: ${d?.active || 0}\n` +
+      `${latLine}\n` +
       `按类型: ${Object.entries(byType).map(([k, v]) => `${k}=${v}`).join(', ')}\n` +
       `按状态: ${Object.entries(byStatus).map(([k, v]) => `${k}=${v}`).join(', ')}\n` +
       `按严重度: ${Object.entries(bySev).map(([k, v]) => `${k}=${v}`).join(', ')}`,
