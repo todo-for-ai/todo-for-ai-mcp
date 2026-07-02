@@ -5212,7 +5212,12 @@ export class TodoMcpServer {
     const summary = points.slice(-10).map((p: any) => {
       const delta = typeof p.score_delta === 'number' ? (p.score_delta >= 0 ? `+${p.score_delta}` : `${p.score_delta}`) : '?';
       const when = p.at ? String(p.at).slice(0, 19).replace('T', ' ') : '?';
-      return `• ${when}: ${p.success ? '成功' : '失败'} ${delta} → ${typeof p.new_score === 'number' ? p.new_score.toFixed(1) : '?'}`;
+      const ctx = [
+        p.step_key ? `步骤${p.step_key}` : null,
+        p.task_id ? `任务#${p.task_id}` : null,
+        p.workflow_run_id ? `工作流#${p.workflow_run_id}` : null,
+      ].filter(Boolean).join(' ');
+      return `• ${when}: ${p.success ? '成功' : '失败'} ${delta} → ${typeof p.new_score === 'number' ? p.new_score.toFixed(1) : '?'}${ctx ? ` (${ctx})` : ''}`;
     }).join('\n');
     return this.toToolResponse(
       `Agent #${args?.agent_id} 声誉历史 (当前 ${typeof data?.current_score === 'number' ? data.current_score.toFixed(1) : '?'}, 共 ${points.length} 个变化点):\n${summary || '暂无声誉变化记录'}`,
