@@ -2781,6 +2781,16 @@ export class TodoMcpServer {
           inputSchema: { type: 'object', properties: {} },
         },
         {
+          name: 'get_sandbox_violation_trend',
+          description: 'Daily sandbox violation counts + by-type breakdown over the last N days (default 30). Useful for spotting whether a policy change or Agent change is producing more violations.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_step_sandbox_execution',
           description: 'Get the sandboxed execution (if any) bound to a workflow step run. Surfaces the auto-started execution + frozen policy snapshot + violations.',
           inputSchema: {
@@ -3904,6 +3914,11 @@ export class TodoMcpServer {
             result = await this.handleGetSandboxDashboard(args);
             break;
 
+          case 'get_sandbox_violation_trend':
+            logger.info(`[MCP_SERVER] Executing get_sandbox_violation_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetSandboxViolationTrend(args);
+            break;
+
           case 'get_step_sandbox_execution':
             logger.info(`[MCP_SERVER] Executing get_step_sandbox_execution`, { requestId, instanceId: this.instanceId, runId: args?.run_id, stepKey: args?.step_key });
             result = await this.handleGetStepSandboxExecution(args);
@@ -4164,6 +4179,7 @@ export class TodoMcpServer {
                 'get_sandbox_execution',
                 'list_sandbox_executions',
                 'get_sandbox_dashboard',
+                'get_sandbox_violation_trend',
                 'get_step_sandbox_execution',
                 'report_step_sandbox_violation',
                 'set_step_runtime_override',
@@ -5701,6 +5717,20 @@ export class TodoMcpServer {
       `沙盒总数: ${d?.total_sandboxes || 0}, 执行总数: ${d?.total_executions || 0}, 运行中: ${d?.running_executions || 0}, 违规总数: ${d?.total_violations || 0}\n` +
       `按级别: ${Object.entries(byLevel).map(([k, v]) => `${k}=${v}`).join(', ')}\n` +
       `按状态: ${Object.entries(byStatus).map(([k, v]) => `${k}=${v}`).join(', ')}`,
+      result,
+    );
+  }
+
+  private async handleGetSandboxViolationTrend(args: any) {
+    const result = await this.apiClient.getSandboxViolationTrend(args);
+    const d = result?.data || result;
+    const trend = Array.isArray(d?.trend) ? d.trend : [];
+    const total = trend.reduce((s: number, t: any) => s + (t.count || 0), 0);
+    const byType = d?.by_type || {};
+    const typeLine = Object.entries(byType).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(', ');
+    const recent = trend.slice(-7).map((t: any) => `• ${t.date}: ${t.count}`).join('\n');
+    return this.toToolResponse(
+      `沙盒违规趋势 (近 ${d?.days || 30} 天): 累计 ${total}\n${recent || '暂无数据'}\n按类型: ${typeLine || '无'}`,
       result,
     );
   }

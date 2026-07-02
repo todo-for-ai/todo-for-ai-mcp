@@ -2361,6 +2361,16 @@ export class TodoApiClient {
     }, 'getSandboxDashboard');
   }
 
+  async getSandboxViolationTrend(args: { days?: number }): Promise<any> {
+    logger.info(`[API_CLIENT] Getting sandbox violation trend`);
+    const params: Record<string, string> = {};
+    if (args?.days) params.days = String(args.days);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/sandboxes/violation-trend', { params });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getSandboxViolationTrend');
+  }
+
   async getStepSandboxExecution(runId: number, stepKey: string): Promise<any> {
     logger.info(`[API_CLIENT] Getting sandbox execution for step ${stepKey} in run ${runId}`);
     return this.executeWithRetry(async () => {
