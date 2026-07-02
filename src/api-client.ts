@@ -2131,6 +2131,14 @@ export class TodoApiClient {
     }, 'getAgentProductivityTrend');
   }
 
+  async getAgentProductivityAlerts(params: { days?: number; min_completion_rate?: number; max_failure_rate?: number; min_assignments?: number } = {}): Promise<any> {
+    logger.info('[API_CLIENT] Getting agent productivity alerts');
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/productivity/alerts', { params });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentProductivityAlerts');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {

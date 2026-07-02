@@ -2420,6 +2420,19 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_productivity_alerts',
+          description: 'Low-efficiency Agent alert list for the current user. Returns Agents whose completion rate < min_completion_rate (default 50) OR failure rate > max_failure_rate (default 30), with at least min_assignments (default 3) assignments. Each entry includes productivity fields and triggering reasons. Surfaces Agents needing attention.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (default 30)' },
+              min_completion_rate: { type: 'number', description: 'Completion rate threshold (default 50)' },
+              max_failure_rate: { type: 'number', description: 'Failure rate threshold (default 30)' },
+              min_assignments: { type: 'integer', description: 'Minimum assignments to consider (default 3)' },
+            },
+          },
+        },
+        {
           name: 'share_agent_experience',
           description: 'Share an Agent\'s experience with other agents in the same domain.',
           inputSchema: {
@@ -3868,6 +3881,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentProductivityTrend(args);
             break;
 
+          case 'get_agent_productivity_alerts':
+            logger.info(`[MCP_SERVER] Executing get_agent_productivity_alerts`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentProductivityAlerts(args);
+            break;
+
           case 'share_agent_experience':
             logger.info(`[MCP_SERVER] Executing share_agent_experience`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id, experienceId: args?.experience_id });
             result = await this.handleShareAgentExperience(args);
@@ -4291,6 +4309,7 @@ export class TodoMcpServer {
                 'get_workflow_failure_correlation_by_step',
                 'get_agent_productivity',
                 'get_agent_productivity_trend',
+                'get_agent_productivity_alerts',
                 'share_agent_experience',
                 'learn_from_experience',
                 'list_shared_experiences',
@@ -5632,6 +5651,22 @@ export class TodoMcpServer {
     return this.toToolResponse(
       `Agent 产出趋势(近${data.days ?? days}天): 累计完成 ${data.total_done ?? 0}, 失败 ${data.total_failed ?? 0}\n` +
         `${trend.map((b: any) => `${b.date}: 完成${b.done} 失败${b.failed}`).join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentProductivityAlerts(args: any) {
+    const params: any = {};
+    if (args?.days != null) params.days = args.days;
+    if (args?.min_completion_rate != null) params.min_completion_rate = args.min_completion_rate;
+    if (args?.max_failure_rate != null) params.max_failure_rate = args.max_failure_rate;
+    if (args?.min_assignments != null) params.min_assignments = args.min_assignments;
+    const result = await this.apiClient.getAgentProductivityAlerts(params);
+    const data = result?.data || result || {};
+    const items = data.items || [];
+    return this.toToolResponse(
+      `低效率 Agent 预警(近${data.days ?? 30}天, 完成率<${data.min_completion_rate ?? 50}% 或 失败率>${data.max_failure_rate ?? 30}%, 最少${data.min_assignments ?? 3}次分配): ${items.length} 个\n` +
+        `${items.map((a: any) => `- ${a.name}#${a.agent_id}: 分配${a.total} 完成${a.done}(率${a.completion_rate}%) 失败${a.failed}(率${a.failure_rate}%) 原因[${(a.reasons || []).join('; ')}]`).join('\n') || '无预警'}`,
       result,
     );
   }
