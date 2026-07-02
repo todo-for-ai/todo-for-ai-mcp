@@ -2410,6 +2410,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_productivity_trend',
+          description: 'Daily Agent assignment completion trend for the current user. Per-day done and failed TaskAssignment counts within the window, plus totals. Reveals whether throughput is rising or falling over time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (default 30)' },
+            },
+          },
+        },
+        {
           name: 'share_agent_experience',
           description: 'Share an Agent\'s experience with other agents in the same domain.',
           inputSchema: {
@@ -3853,6 +3863,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentProductivity(args);
             break;
 
+          case 'get_agent_productivity_trend':
+            logger.info(`[MCP_SERVER] Executing get_agent_productivity_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentProductivityTrend(args);
+            break;
+
           case 'share_agent_experience':
             logger.info(`[MCP_SERVER] Executing share_agent_experience`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id, experienceId: args?.experience_id });
             result = await this.handleShareAgentExperience(args);
@@ -4275,6 +4290,7 @@ export class TodoMcpServer {
                 'get_workflow_failure_correlation',
                 'get_workflow_failure_correlation_by_step',
                 'get_agent_productivity',
+                'get_agent_productivity_trend',
                 'share_agent_experience',
                 'learn_from_experience',
                 'list_shared_experiences',
@@ -5604,6 +5620,18 @@ export class TodoMcpServer {
     return this.toToolResponse(
       `Agent 产出效率(近${data.days ?? days}天):\n` +
         `${items.map((a: any) => `- ${a.name}#${a.agent_id}: 分配${a.total} 完成${a.done}(率${a.completion_rate}%) 失败${a.failed} 取消${a.cancelled} 过期${a.expired} 进行中${a.in_progress} 平均完成${a.avg_completion_hours ?? '—'}h`).join('\n') || '无分配'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentProductivityTrend(args: any) {
+    const days = args?.days ?? 30;
+    const result = await this.apiClient.getAgentProductivityTrend(days);
+    const data = result?.data || result || {};
+    const trend = data.trend || [];
+    return this.toToolResponse(
+      `Agent 产出趋势(近${data.days ?? days}天): 累计完成 ${data.total_done ?? 0}, 失败 ${data.total_failed ?? 0}\n` +
+        `${trend.map((b: any) => `${b.date}: 完成${b.done} 失败${b.failed}`).join('\n') || '无数据'}`,
       result,
     );
   }
