@@ -5671,6 +5671,7 @@ export class TodoMcpServer {
     const matrix = data.by_domain_tasktype || {};
     const matrixSummary = Object.entries(matrix).slice(0, 5).map(([d, tasks]: any) => `${d}:{${Object.entries(tasks).map(([t, c]: any) => `${t}=${c}`).join(',')}}`).join('; ');
     const domainReuseEntries = Object.entries(data.by_domain_reuses || {}).slice(0, 8);
+    const taskTypeReuseEntries = Object.entries(data.by_task_type_reuses || {}).slice(0, 8);
     return this.toToolResponse(
       `经验库统计: 共 ${total} 条有效经验\n` +
         `按经验类型: ${typeEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
@@ -5680,7 +5681,8 @@ export class TodoMcpServer {
         `共享: ${data.shared ?? 0} 条, 累计复用: ${data.total_reuses ?? 0} 次, 平均置信度: ${data.avg_confidence ?? 0}\n` +
         `复用最多(top5): ${topReused.slice(0, 5).map((e: any) => `#${e.id} ${e.domain}/${e.experience_type}(${e.times_reused}次,置信${e.confidence})`).join('; ') || '无'}\n` +
         `域×任务类型矩阵(top5域): ${matrixSummary || '无'}\n` +
-        `域复用排行(top8): ${domainReuseEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}`,
+        `域复用排行(top8): ${domainReuseEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
+        `任务类型复用排行(top8): ${taskTypeReuseEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}`,
       result,
     );
   }
