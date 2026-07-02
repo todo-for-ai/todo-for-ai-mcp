@@ -2167,10 +2167,12 @@ export class TodoApiClient {
     }, 'getAgentHealth');
   }
 
-  async getAgentHealthTrend(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent health trend (days=${days})`);
+  async getAgentHealthTrend(days = 30, agentId?: number): Promise<any> {
+    logger.info(`[API_CLIENT] Getting agent health trend (days=${days}, agentId=${agentId ?? 'all'})`);
     return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/health/trend', { params: { days } });
+      const params: any = { days };
+      if (agentId != null) params.agent_id = agentId;
+      const response = await this.client.get('agents/health/trend', { params });
       return this.unwrapApiData<any>(response.data);
     }, 'getAgentHealthTrend');
   }

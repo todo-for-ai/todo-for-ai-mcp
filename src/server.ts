@@ -2476,11 +2476,12 @@ export class TodoMcpServer {
         },
         {
           name: 'get_agent_health_trend',
-          description: 'Daily reputation-derived health trend for the current user Agents. Aggregates reputation.update audit entries by day: average new_score (last-seen per agent that day), positive delta count, negative delta count. Also annotates per-day conflict event count and sandbox violation count so drops in reputation can be correlated with incidents. A proxy for whether fleet health is rising or falling over time.',
+          description: 'Daily reputation-derived health trend for the current user Agents. Aggregates reputation.update audit entries by day: average new_score (last-seen per agent that day), positive delta count, negative delta count. Also annotates per-day conflict event count and sandbox violation count so drops in reputation can be correlated with incidents. Optional agent_id drills down to a single Agent. A proxy for whether fleet health is rising or falling over time.',
           inputSchema: {
             type: 'object',
             properties: {
               days: { type: 'integer', description: 'Lookback window in days (default 30)' },
+              agent_id: { type: 'integer', description: 'Optional: drill down to a single Agent ID (omit for fleet-wide trend)' },
             },
           },
         },
@@ -5839,11 +5840,13 @@ export class TodoMcpServer {
 
   private async handleGetAgentHealthTrend(args: any) {
     const days = args?.days ?? 30;
-    const result = await this.apiClient.getAgentHealthTrend(days);
+    const agentId = args?.agent_id != null ? Number(args.agent_id) : undefined;
+    const result = await this.apiClient.getAgentHealthTrend(days, agentId);
     const data = result?.data || result || {};
     const trend = data.trend || [];
+    const scope = data.agent_id ? `Agent ${data.agent_name ?? '#' + data.agent_id} ` : '';
     return this.toToolResponse(
-      `Agent 健康度趋势(近${data.days ?? days}天): 累计正向 ${data.total_positive ?? 0}, 负向 ${data.total_negative ?? 0}, 冲突 ${data.total_conflicts ?? 0}, 违规 ${data.total_violations ?? 0}\n` +
+      `${scope}健康度趋势(近${data.days ?? days}天): 累计正向 ${data.total_positive ?? 0}, 负向 ${data.total_negative ?? 0}, 冲突 ${data.total_conflicts ?? 0}, 违规 ${data.total_violations ?? 0}\n` +
         `${trend.map((b: any) => `${b.date}: 平均声誉${b.avg_reputation ?? '—'} 正向${b.positive} 负向${b.negative} 冲突${b.conflicts ?? 0} 违规${b.sandbox_violations ?? 0}`).join('\n') || '无数据'}`,
       result,
     );
