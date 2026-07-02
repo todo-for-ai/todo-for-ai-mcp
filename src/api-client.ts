@@ -2165,6 +2165,14 @@ export class TodoApiClient {
     }, 'getAgentHealthTrend');
   }
 
+  async getAgentHealthAlerts(params: { days?: number; min_health_score?: number } = {}): Promise<any> {
+    logger.info('[API_CLIENT] Getting agent health alerts');
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/health/alerts', { params });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentHealthAlerts');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {

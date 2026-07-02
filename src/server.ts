@@ -2464,6 +2464,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_health_alerts',
+          description: 'Low-health Agent alert list for the current user. Returns Agents whose composite health_score < min_health_score (default 60), with triggering reasons (low reputation / low completion / conflicts / violations). Each entry includes full health fields. Surfaces Agents needing attention.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (default 30)' },
+              min_health_score: { type: 'number', description: 'Health score threshold (default 60)' },
+            },
+          },
+        },
+        {
           name: 'share_agent_experience',
           description: 'Share an Agent\'s experience with other agents in the same domain.',
           inputSchema: {
@@ -3932,6 +3943,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentHealthTrend(args);
             break;
 
+          case 'get_agent_health_alerts':
+            logger.info(`[MCP_SERVER] Executing get_agent_health_alerts`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentHealthAlerts(args);
+            break;
+
           case 'share_agent_experience':
             logger.info(`[MCP_SERVER] Executing share_agent_experience`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id, experienceId: args?.experience_id });
             result = await this.handleShareAgentExperience(args);
@@ -4359,6 +4375,7 @@ export class TodoMcpServer {
                 'get_conflicts_sandbox_correlation',
                 'get_agent_health',
                 'get_agent_health_trend',
+                'get_agent_health_alerts',
                 'share_agent_experience',
                 'learn_from_experience',
                 'list_shared_experiences',
@@ -5758,6 +5775,20 @@ export class TodoMcpServer {
     return this.toToolResponse(
       `Agent 健康度趋势(近${data.days ?? days}天): 累计正向 ${data.total_positive ?? 0}, 负向 ${data.total_negative ?? 0}\n` +
         `${trend.map((b: any) => `${b.date}: 平均声誉${b.avg_reputation ?? '—'} 正向${b.positive} 负向${b.negative}`).join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentHealthAlerts(args: any) {
+    const params: any = {};
+    if (args?.days != null) params.days = args.days;
+    if (args?.min_health_score != null) params.min_health_score = args.min_health_score;
+    const result = await this.apiClient.getAgentHealthAlerts(params);
+    const data = result?.data || result || {};
+    const items = data.items || [];
+    return this.toToolResponse(
+      `低健康 Agent 预警(近${data.days ?? 30}天, 健康分<${data.min_health_score ?? 60}): ${items.length} 个\n` +
+        `${items.map((a: any) => `- ${a.name}#${a.agent_id}: 健康${a.health_score} (声誉${a.sub_scores.reputation}/完成${a.sub_scores.completion}/冲突${a.sub_scores.conflict}/违规${a.sub_scores.violation}; 原因[${(a.reasons || []).join('; ')}])`).join('\n') || '无预警'}`,
       result,
     );
   }
