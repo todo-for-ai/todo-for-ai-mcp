@@ -4967,10 +4967,10 @@ export class TodoMcpServer {
     const d = result?.data || result;
     const trend = Array.isArray(d?.trend) ? d.trend : [];
     const recent = trend.slice(-7)
-      .map((t: any) => `• ${t.date}: 成功 ${t.succeeded} / 失败 ${t.failed}`)
+      .map((t: any) => `• ${t.date}: 成功 ${t.succeeded} / 失败 ${t.failed} / 失败步骤 ${t.failed_steps ?? 0}`)
       .join('\n');
     return this.toToolResponse(
-      `工作流运行趋势 (近 ${d?.days || 30} 天): 累计成功 ${d?.total_succeeded || 0}, 累计失败 ${d?.total_failed || 0}\n${recent || '暂无数据'}`,
+      `工作流运行趋势 (近 ${d?.days || 30} 天): 累计成功 ${d?.total_succeeded || 0}, 累计失败 ${d?.total_failed || 0}, 累计失败步骤 ${d?.total_failed_steps || 0}\n${recent || '暂无数据'}`,
       result,
     );
   }
