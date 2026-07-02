@@ -5749,7 +5749,7 @@ export class TodoMcpServer {
     const items = data.items || [];
     return this.toToolResponse(
       `按步骤的失败关联(近${data.days ?? days}天, ±${data.window_hours ?? windowHours}h):\n` +
-        `${items.map((it: any) => `- ${it.step_key}: 失败${it.failed} 冲突${it.with_conflict}(${it.conflict_rate}%) 违规${it.with_violation}(${it.violation_rate}%)`).join('\n') || '无失败步骤'}`,
+        `${items.map((it: any) => `- ${it.step_key}: 失败${it.failed} 冲突${it.with_conflict}(${it.conflict_rate}%) 违规${it.with_violation}(${it.violation_rate}%)${Object.keys(it.conflict_types || {}).length ? ` 类型[${Object.entries(it.conflict_types).map(([t, c]: any) => `${t}=${c}`).join(', ')}]` : ''}`).join('\n') || '无失败步骤'}`,
       result,
     );
   }
