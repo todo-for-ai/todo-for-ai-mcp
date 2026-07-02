@@ -2922,6 +2922,16 @@ export class TodoMcpServer {
           inputSchema: { type: 'object', properties: {} },
         },
         {
+          name: 'get_conflicts_trend',
+          description: 'Daily conflict detection vs resolution counts over the last N days (default 30). Each bucket has {date, detected, resolved}. Useful for seeing whether conflicts accumulate faster than they are cleared.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'list_sandbox_templates',
           description: 'List preset sandbox policy templates (read_only_research, code_generation, data_analysis, full_autonomy, sandboxed_review).',
           inputSchema: { type: 'object', properties: {} },
@@ -3939,6 +3949,11 @@ export class TodoMcpServer {
             result = await this.handleGetConflictsDashboard(args);
             break;
 
+          case 'get_conflicts_trend':
+            logger.info(`[MCP_SERVER] Executing get_conflicts_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetConflictsTrend(args);
+            break;
+
           case 'list_sandbox_templates':
             logger.info(`[MCP_SERVER] Executing list_sandbox_templates`, { requestId, instanceId: this.instanceId });
             result = await this.handleListSandboxTemplates(args);
@@ -4136,6 +4151,7 @@ export class TodoMcpServer {
                 'acknowledge_conflict',
                 'ignore_conflict',
                 'get_conflicts_dashboard',
+                'get_conflicts_trend',
                 'list_sandbox_templates',
                 'instantiate_sandbox_template',
                 'auto_resolve_conflicts',
@@ -5797,6 +5813,21 @@ export class TodoMcpServer {
       `按类型: ${Object.entries(byType).map(([k, v]) => `${k}=${v}`).join(', ')}\n` +
       `按状态: ${Object.entries(byStatus).map(([k, v]) => `${k}=${v}`).join(', ')}\n` +
       `按严重度: ${Object.entries(bySev).map(([k, v]) => `${k}=${v}`).join(', ')}`,
+      result,
+    );
+  }
+
+  private async handleGetConflictsTrend(args: any) {
+    const result = await this.apiClient.getConflictsTrend(args);
+    const d = result?.data || result;
+    const trend = Array.isArray(d?.trend) ? d.trend : [];
+    const totalDetected = trend.reduce((s: number, t: any) => s + (t.detected || 0), 0);
+    const totalResolved = trend.reduce((s: number, t: any) => s + (t.resolved || 0), 0);
+    const recent = trend.slice(-10)
+      .map((t: any) => `• ${t.date}: 检测 ${t.detected || 0} / 解决 ${t.resolved || 0}`)
+      .join('\n');
+    return this.toToolResponse(
+      `冲突趋势 (近 ${d?.days || 30} 天): 累计检测 ${totalDetected}, 累计解决 ${totalResolved}\n${recent || '暂无数据'}`,
       result,
     );
   }

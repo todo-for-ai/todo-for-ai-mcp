@@ -2461,6 +2461,16 @@ export class TodoApiClient {
     }, 'getConflictsDashboard');
   }
 
+  async getConflictsTrend(args: { days?: number }): Promise<any> {
+    logger.info(`[API_CLIENT] Getting conflicts trend`);
+    const params: Record<string, string> = {};
+    if (args?.days) params.days = String(args.days);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/conflicts/trend', { params });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getConflictsTrend');
+  }
+
   async listSandboxTemplates(): Promise<any> {
     logger.info(`[API_CLIENT] Listing sandbox templates`);
     return this.executeWithRetry(async () => {
