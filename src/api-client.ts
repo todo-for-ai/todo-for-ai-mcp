@@ -2139,6 +2139,16 @@ export class TodoApiClient {
     }, 'getAgentProductivityAlerts');
   }
 
+  async getConflictsSandboxCorrelation(days = 30, windowHours = 2): Promise<any> {
+    logger.info(`[API_CLIENT] Getting conflicts-sandbox correlation (days=${days}, window=${windowHours}h)`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/conflicts/sandbox-correlation', {
+        params: { days, window_hours: windowHours },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getConflictsSandboxCorrelation');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {

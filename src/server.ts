@@ -2433,6 +2433,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_conflicts_sandbox_correlation',
+          description: 'Cross-dimension correlation between Agent conflicts and sandbox violations. For each conflict, checks whether a sandbox violation involving a conflict party occurred within ±window_hours. Reports co-occurrence rate, breakdown by conflict_type, and top agents whose conflicts most coincide with violations.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (default 30)' },
+              window_hours: { type: 'integer', description: 'Correlation time window in hours (default 2)' },
+            },
+          },
+        },
+        {
           name: 'share_agent_experience',
           description: 'Share an Agent\'s experience with other agents in the same domain.',
           inputSchema: {
@@ -3886,6 +3897,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentProductivityAlerts(args);
             break;
 
+          case 'get_conflicts_sandbox_correlation':
+            logger.info(`[MCP_SERVER] Executing get_conflicts_sandbox_correlation`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetConflictsSandboxCorrelation(args);
+            break;
+
           case 'share_agent_experience':
             logger.info(`[MCP_SERVER] Executing share_agent_experience`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id, experienceId: args?.experience_id });
             result = await this.handleShareAgentExperience(args);
@@ -4310,6 +4326,7 @@ export class TodoMcpServer {
                 'get_agent_productivity',
                 'get_agent_productivity_trend',
                 'get_agent_productivity_alerts',
+                'get_conflicts_sandbox_correlation',
                 'share_agent_experience',
                 'learn_from_experience',
                 'list_shared_experiences',
@@ -5667,6 +5684,24 @@ export class TodoMcpServer {
     return this.toToolResponse(
       `低效率 Agent 预警(近${data.days ?? 30}天, 完成率<${data.min_completion_rate ?? 50}% 或 失败率>${data.max_failure_rate ?? 30}%, 最少${data.min_assignments ?? 3}次分配): ${items.length} 个\n` +
         `${items.map((a: any) => `- ${a.name}#${a.agent_id}: 分配${a.total} 完成${a.done}(率${a.completion_rate}%) 失败${a.failed}(率${a.failure_rate}%) 原因[${(a.reasons || []).join('; ')}]`).join('\n') || '无预警'}`,
+      result,
+    );
+  }
+
+  private async handleGetConflictsSandboxCorrelation(args: any) {
+    const days = args?.days ?? 30;
+    const windowHours = args?.window_hours ?? 2;
+    const result = await this.apiClient.getConflictsSandboxCorrelation(days, windowHours);
+    const data = result?.data || result || {};
+    const total = data.total_conflicts ?? 0;
+    const byType = data.by_conflict_type || {};
+    const top = data.top_agents || [];
+    const typeEntries = Object.entries(byType);
+    return this.toToolResponse(
+      `冲突↔沙盒违规关联(近${data.days ?? days}天, ±${data.window_hours ?? windowHours}h):\n` +
+        `冲突总数: ${total}, 伴随沙盒违规: ${data.with_violation ?? 0} (${data.violation_rate ?? 0}%)\n` +
+        `按冲突类型: ${typeEntries.map(([k, v]: any) => `${k}=${v.with_violation}/${v.total}(${v.rate}%)`).join(', ') || '无'}\n` +
+        `关联最多的 Agent(top8): ${top.map((a: any) => `${a.name}#${a.agent_id}(冲突${a.conflicts}/伴随违规${a.with_violation})`).join(', ') || '无'}`,
       result,
     );
   }
