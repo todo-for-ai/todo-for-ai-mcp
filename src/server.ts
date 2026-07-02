@@ -5717,7 +5717,8 @@ export class TodoMcpServer {
         `平均完成率: ${data.avg_completion_rate ?? 0}%, 已完成任务平均生命周期: ${data.avg_lifecycle_hours ?? '—'} 小时\n` +
         `生命周期分布(已完成): ${bucketEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
         `逾期: ${data.overdue_count ?? 0} 个 (有截止日 ${data.with_due_date ?? 0} 个, 逾期率 ${data.overdue_rate ?? 0}%)\n` +
-        `按项目(top10): ${(data.by_project || []).map((p: any) => `${p.name}=${p.count}`).join(', ') || '无'}`,
+        `按项目(top10): ${(data.by_project || []).map((p: any) => `${p.name}=${p.count}`).join(', ') || '无'}\n` +
+        `优先级×状态矩阵: ${Object.entries(data.by_priority_status || {}).map(([p, sts]: any) => `${p}:{${Object.entries(sts).map(([s, c]: any) => `${s}=${c}`).join(',')}}`).join('; ') || '无'}`,
       result,
     );
   }
