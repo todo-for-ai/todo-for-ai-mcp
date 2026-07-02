@@ -2377,6 +2377,17 @@ export class TodoMcpServer {
           inputSchema: { type: 'object', properties: {} },
         },
         {
+          name: 'get_workflow_failure_correlation',
+          description: 'Cross-dimension correlation between failed workflow steps and collaboration conflicts / sandbox violations. For each failed step, checks whether a conflict or sandbox violation involving the same Agent occurred within ±window_hours. Reports co-occurrence rates and top agents whose failures most coincide with conflicts/violations.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (default 30)' },
+              window_hours: { type: 'integer', description: 'Correlation time window in hours (default 2)' },
+            },
+          },
+        },
+        {
           name: 'share_agent_experience',
           description: 'Share an Agent\'s experience with other agents in the same domain.',
           inputSchema: {
@@ -3805,6 +3816,11 @@ export class TodoMcpServer {
             result = await this.handleGetTaskStats(args);
             break;
 
+          case 'get_workflow_failure_correlation':
+            logger.info(`[MCP_SERVER] Executing get_workflow_failure_correlation`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowFailureCorrelation(args);
+            break;
+
           case 'share_agent_experience':
             logger.info(`[MCP_SERVER] Executing share_agent_experience`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id, experienceId: args?.experience_id });
             result = await this.handleShareAgentExperience(args);
@@ -4224,6 +4240,7 @@ export class TodoMcpServer {
                 'recommend_experiences',
                 'get_experiences_stats',
                 'get_task_stats',
+                'get_workflow_failure_correlation',
                 'share_agent_experience',
                 'learn_from_experience',
                 'list_shared_experiences',
@@ -5503,6 +5520,24 @@ export class TodoMcpServer {
         `按优先级: ${priorityEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
         `平均完成率: ${data.avg_completion_rate ?? 0}%, 已完成任务平均生命周期: ${data.avg_lifecycle_hours ?? '—'} 小时\n` +
         `生命周期分布(已完成): ${bucketEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowFailureCorrelation(args: any) {
+    const days = args?.days ?? 30;
+    const windowHours = args?.window_hours ?? 2;
+    const result = await this.apiClient.getWorkflowFailureCorrelation(days, windowHours);
+    const data = result?.data || result || {};
+    const total = data.total_failed_steps ?? 0;
+    const top = data.top_agents || [];
+    return this.toToolResponse(
+      `失败步骤跨维度关联(近${data.days ?? days}天, ±${data.window_hours ?? windowHours}h窗口):\n` +
+        `失败步骤总数: ${total}\n` +
+        `伴随冲突: ${data.with_conflict ?? 0} (${data.conflict_rate ?? 0}%)\n` +
+        `伴随沙盒违规: ${data.with_violation ?? 0} (${data.violation_rate ?? 0}%)\n` +
+        `同时伴随两者: ${data.with_both ?? 0} (${data.both_rate ?? 0}%)\n` +
+        `关联最多的 Agent(top8): ${top.map((a: any) => `${a.name}#${a.agent_id}(失败${a.failed_steps}/冲突${a.with_conflict}/违规${a.with_violation})`).join(', ') || '无'}`,
       result,
     );
   }

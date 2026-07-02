@@ -2091,6 +2091,16 @@ export class TodoApiClient {
     }, 'getTaskStats');
   }
 
+  async getWorkflowFailureCorrelation(days = 30, windowHours = 2): Promise<any> {
+    logger.info(`[API_CLIENT] Getting workflow failure correlation (days=${days}, window=${windowHours}h)`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/failure-correlation', {
+        params: { days, window_hours: windowHours },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowFailureCorrelation');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {
