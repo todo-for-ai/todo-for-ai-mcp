@@ -2382,6 +2382,14 @@ export class TodoApiClient {
     }, 'getSandboxViolationsByAgent');
   }
 
+  async getSandboxTemplateUsage(): Promise<any> {
+    logger.info(`[API_CLIENT] Getting sandbox template usage`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/sandboxes/template-usage');
+      return this.unwrapApiData<any>(response.data);
+    }, 'getSandboxTemplateUsage');
+  }
+
   async getStepSandboxExecution(runId: number, stepKey: string): Promise<any> {
     logger.info(`[API_CLIENT] Getting sandbox execution for step ${stepKey} in run ${runId}`);
     return this.executeWithRetry(async () => {

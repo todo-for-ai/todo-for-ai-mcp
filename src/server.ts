@@ -2802,6 +2802,11 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_sandbox_template_usage',
+          description: 'Sandbox policy template instantiation stats: per-template usage count and how many instances were bound to an Agent. Reveals which preset templates are most popular.',
+          inputSchema: { type: 'object', properties: {} },
+        },
+        {
           name: 'get_step_sandbox_execution',
           description: 'Get the sandboxed execution (if any) bound to a workflow step run. Surfaces the auto-started execution + frozen policy snapshot + violations.',
           inputSchema: {
@@ -3935,6 +3940,11 @@ export class TodoMcpServer {
             result = await this.handleGetSandboxViolationsByAgent(args);
             break;
 
+          case 'get_sandbox_template_usage':
+            logger.info(`[MCP_SERVER] Executing get_sandbox_template_usage`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetSandboxTemplateUsage(args);
+            break;
+
           case 'get_step_sandbox_execution':
             logger.info(`[MCP_SERVER] Executing get_step_sandbox_execution`, { requestId, instanceId: this.instanceId, runId: args?.run_id, stepKey: args?.step_key });
             result = await this.handleGetStepSandboxExecution(args);
@@ -4197,6 +4207,7 @@ export class TodoMcpServer {
                 'get_sandbox_dashboard',
                 'get_sandbox_violation_trend',
                 'get_sandbox_violations_by_agent',
+                'get_sandbox_template_usage',
                 'get_step_sandbox_execution',
                 'report_step_sandbox_violation',
                 'set_step_runtime_override',
@@ -5760,6 +5771,16 @@ export class TodoMcpServer {
       .map((it: any) => `• ${it.name || 'Agent'} #${it.agent_id} [${it.kind || '?'}]: ${it.total} 次`)
       .join('\n');
     return this.toToolResponse(`沙盒违规按 Agent (近 ${d?.days || 30} 天, top ${items.length}):\n${summary || '暂无违规'}`, result);
+  }
+
+  private async handleGetSandboxTemplateUsage(args: any) {
+    const result = await this.apiClient.getSandboxTemplateUsage();
+    const d = result?.data || result;
+    const items = Array.isArray(d?.items) ? d.items : [];
+    const summary = items
+      .map((it: any) => `• ${it.template_key}: ${it.uses} 次 (绑定 Agent ${it.bound_to_agent})`)
+      .join('\n');
+    return this.toToolResponse(`沙盒模板使用统计:\n${summary || '暂无实例化记录'}`, result);
   }
 
   private async handleGetStepSandboxExecution(args: any) {
