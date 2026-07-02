@@ -2444,6 +2444,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_productivity_by_kind',
+          description: 'Productivity comparison grouped by Agent kind for the current user. For each kind (assistant/worker/orchestrator/...), aggregates assignments into totals, done, failed, cancelled, expired, in_progress, agent count, average completion rate, average failure rate, and average completion hours. Surfaces how each Agent class performs relative to its peers of the same kind.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_conflicts_sandbox_correlation',
           description: 'Cross-dimension correlation between Agent conflicts and sandbox violations. For each conflict, checks whether a sandbox violation involving a conflict party occurred within ±window_hours. Reports co-occurrence rate, breakdown by conflict_type, and top agents whose conflicts most coincide with violations.',
           inputSchema: {
@@ -3944,6 +3954,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentProductivityAlerts(args);
             break;
 
+          case 'get_agent_productivity_by_kind':
+            logger.info(`[MCP_SERVER] Executing get_agent_productivity_by_kind`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentProductivityByKind(args);
+            break;
+
           case 'get_conflicts_sandbox_correlation':
             logger.info(`[MCP_SERVER] Executing get_conflicts_sandbox_correlation`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetConflictsSandboxCorrelation(args);
@@ -4389,6 +4404,7 @@ export class TodoMcpServer {
                 'get_agent_productivity',
                 'get_agent_productivity_trend',
                 'get_agent_productivity_alerts',
+                'get_agent_productivity_by_kind',
                 'get_conflicts_sandbox_correlation',
                 'get_agent_health',
                 'get_agent_health_trend',
@@ -5770,6 +5786,18 @@ export class TodoMcpServer {
     return this.toToolResponse(
       `低效率 Agent 预警(近${data.days ?? 30}天, 完成率<${data.min_completion_rate ?? 50}% 或 失败率>${data.max_failure_rate ?? 30}%, 最少${data.min_assignments ?? 3}次分配): ${items.length} 个\n` +
         `${items.map((a: any) => `- ${a.name}#${a.agent_id}: 分配${a.total} 完成${a.done}(率${a.completion_rate}%) 失败${a.failed}(率${a.failure_rate}%) 原因[${(a.reasons || []).join('; ')}]`).join('\n') || '无预警'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentProductivityByKind(args: any) {
+    const days = args?.days ?? 30;
+    const result = await this.apiClient.getAgentProductivityByKind(days);
+    const data = result?.data || result || {};
+    const items = data.items || [];
+    return this.toToolResponse(
+      `按 Agent kind 产出效率对比(近${data.days ?? days}天): ${items.length} 类\n` +
+        `${items.map((k: any) => `- ${k.kind}: Agent数${k.agent_count} 分配${k.total} 完成${k.done}(率${k.completion_rate}%) 失败${k.failed}(率${k.failure_rate}%) 平均完成${k.avg_completion_hours ?? 'N/A'}h`).join('\n') || '无数据'}`,
       result,
     );
   }
