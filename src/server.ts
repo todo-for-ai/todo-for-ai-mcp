@@ -4744,7 +4744,8 @@ export class TodoMcpServer {
       .map((it: any) => {
         const rate = Math.round((it.success_rate || 0) * 100);
         const dur = typeof it.avg_duration_seconds === 'number' ? `${it.avg_duration_seconds}s` : '?';
-        return `• ${it.step_key}: ${it.total}次 成功${rate}% 失败${it.failed} 均${dur}`;
+        const retry = it.retries > 0 ? ` 重试${it.retries}` : '';
+        return `• ${it.step_key}: ${it.total}次 成功${rate}% 失败${it.failed} 均${dur}${retry}`;
       })
       .join('\n');
     return this.toToolResponse(`工作流步骤统计:\n${summary || '暂无步骤运行数据'}`, result);
