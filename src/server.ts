@@ -1305,6 +1305,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_step_stats',
+          description: 'Per-step-key execution stats across the user workflow runs: total/succeeded/failed/skipped, success rate, and average duration. Reveals bottleneck and chronic-failure steps.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max number of step keys to return (1-100, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_run',
           description: 'Get a single workflow run with step details.',
           inputSchema: {
@@ -3403,6 +3413,11 @@ export class TodoMcpServer {
             result = await this.handleListWorkflowRuns(args);
             break;
 
+          case 'get_workflow_step_stats':
+            logger.info(`[MCP_SERVER] Executing get_workflow_step_stats`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowStepStats(args);
+            break;
+
           case 'get_workflow_run':
             logger.info(`[MCP_SERVER] Executing get_workflow_run`, { requestId, instanceId: this.instanceId, runId: args?.run_id });
             result = await this.handleGetWorkflowRun(args);
@@ -4104,6 +4119,7 @@ export class TodoMcpServer {
                 'delete_workflow',
                 'launch_workflow',
                 'list_workflow_runs',
+                'get_workflow_step_stats',
                 'get_workflow_run',
                 'get_workflow_run_console',
                 'cancel_workflow_run',
@@ -4702,6 +4718,20 @@ export class TodoMcpServer {
     const pending = stepRuns.filter((sr: any) => sr.status === 'pending').length;
     const summary = `Workflow run #${result.id} launched (status: ${result.status}). ${started} step(s) started, ${pending} pending.`;
     return this.toToolResponse(summary, result);
+  }
+
+  private async handleGetWorkflowStepStats(args: any) {
+    const result = await this.apiClient.getWorkflowStepStats(args);
+    const d = result?.data || result;
+    const items = Array.isArray(d?.items) ? d.items : [];
+    const summary = items
+      .map((it: any) => {
+        const rate = Math.round((it.success_rate || 0) * 100);
+        const dur = typeof it.avg_duration_seconds === 'number' ? `${it.avg_duration_seconds}s` : '?';
+        return `• ${it.step_key}: ${it.total}次 成功${rate}% 失败${it.failed} 均${dur}`;
+      })
+      .join('\n');
+    return this.toToolResponse(`工作流步骤统计:\n${summary || '暂无步骤运行数据'}`, result);
   }
 
   private async handleListWorkflowRuns(args: any) {

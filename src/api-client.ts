@@ -1310,6 +1310,16 @@ export class TodoApiClient {
     }, 'listWorkflowRuns');
   }
 
+  async getWorkflowStepStats(args?: { limit?: number }): Promise<any> {
+    logger.info('[API_CLIENT] Getting workflow step stats');
+    const params: Record<string, string> = {};
+    if (args?.limit) params.limit = String(args.limit);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/step-stats', { params });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowStepStats');
+  }
+
   /**
    * Get a single workflow run.
    */
