@@ -2454,6 +2454,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_health_trend',
+          description: 'Daily reputation-derived health trend for the current user Agents. Aggregates reputation.update audit entries by day: average new_score (last-seen per agent that day), positive delta count, negative delta count. A proxy for whether fleet health is rising or falling over time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (default 30)' },
+            },
+          },
+        },
+        {
           name: 'share_agent_experience',
           description: 'Share an Agent\'s experience with other agents in the same domain.',
           inputSchema: {
@@ -3917,6 +3927,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentHealth(args);
             break;
 
+          case 'get_agent_health_trend':
+            logger.info(`[MCP_SERVER] Executing get_agent_health_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentHealthTrend(args);
+            break;
+
           case 'share_agent_experience':
             logger.info(`[MCP_SERVER] Executing share_agent_experience`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id, experienceId: args?.experience_id });
             result = await this.handleShareAgentExperience(args);
@@ -4343,6 +4358,7 @@ export class TodoMcpServer {
                 'get_agent_productivity_alerts',
                 'get_conflicts_sandbox_correlation',
                 'get_agent_health',
+                'get_agent_health_trend',
                 'share_agent_experience',
                 'learn_from_experience',
                 'list_shared_experiences',
@@ -5730,6 +5746,18 @@ export class TodoMcpServer {
     return this.toToolResponse(
       `Agent 综合健康度(近${data.days ?? days}天, 声誉0.4+完成0.3+冲突0.15+违规0.15):\n` +
         `${items.map((a: any) => `- ${a.name}#${a.agent_id}[${a.status ?? '?'}]: 健康${a.health_score} (声誉${a.sub_scores.reputation}/完成${a.sub_scores.completion}/冲突${a.sub_scores.conflict}/违规${a.sub_scores.violation}; 完成率${a.completion_rate ?? '—'}% 冲突${a.conflicts} 违规${a.sandbox_violations})`).join('\n') || '无 Agent'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentHealthTrend(args: any) {
+    const days = args?.days ?? 30;
+    const result = await this.apiClient.getAgentHealthTrend(days);
+    const data = result?.data || result || {};
+    const trend = data.trend || [];
+    return this.toToolResponse(
+      `Agent 健康度趋势(近${data.days ?? days}天): 累计正向 ${data.total_positive ?? 0}, 负向 ${data.total_negative ?? 0}\n` +
+        `${trend.map((b: any) => `${b.date}: 平均声誉${b.avg_reputation ?? '—'} 正向${b.positive} 负向${b.negative}`).join('\n') || '无数据'}`,
       result,
     );
   }
