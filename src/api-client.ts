@@ -1320,6 +1320,16 @@ export class TodoApiClient {
     }, 'getWorkflowStepStats');
   }
 
+  async getWorkflowRunTrend(args?: { days?: number }): Promise<any> {
+    logger.info('[API_CLIENT] Getting workflow run trend');
+    const params: Record<string, string> = {};
+    if (args?.days) params.days = String(args.days);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/run-trend', { params });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowRunTrend');
+  }
+
   /**
    * Get a single workflow run.
    */

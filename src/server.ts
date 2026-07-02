@@ -1315,6 +1315,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_run_trend',
+          description: 'Daily workflow run outcome trend: per-day succeeded vs failed counts over the last N days (default 30), using finished_at. Useful for charting workflow reliability over time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_run',
           description: 'Get a single workflow run with step details.',
           inputSchema: {
@@ -3418,6 +3428,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowStepStats(args);
             break;
 
+          case 'get_workflow_run_trend':
+            logger.info(`[MCP_SERVER] Executing get_workflow_run_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowRunTrend(args);
+            break;
+
           case 'get_workflow_run':
             logger.info(`[MCP_SERVER] Executing get_workflow_run`, { requestId, instanceId: this.instanceId, runId: args?.run_id });
             result = await this.handleGetWorkflowRun(args);
@@ -4120,6 +4135,7 @@ export class TodoMcpServer {
                 'launch_workflow',
                 'list_workflow_runs',
                 'get_workflow_step_stats',
+                'get_workflow_run_trend',
                 'get_workflow_run',
                 'get_workflow_run_console',
                 'cancel_workflow_run',
@@ -4732,6 +4748,19 @@ export class TodoMcpServer {
       })
       .join('\n');
     return this.toToolResponse(`工作流步骤统计:\n${summary || '暂无步骤运行数据'}`, result);
+  }
+
+  private async handleGetWorkflowRunTrend(args: any) {
+    const result = await this.apiClient.getWorkflowRunTrend(args);
+    const d = result?.data || result;
+    const trend = Array.isArray(d?.trend) ? d.trend : [];
+    const recent = trend.slice(-7)
+      .map((t: any) => `• ${t.date}: 成功 ${t.succeeded} / 失败 ${t.failed}`)
+      .join('\n');
+    return this.toToolResponse(
+      `工作流运行趋势 (近 ${d?.days || 30} 天): 累计成功 ${d?.total_succeeded || 0}, 累计失败 ${d?.total_failed || 0}\n${recent || '暂无数据'}`,
+      result,
+    );
   }
 
   private async handleListWorkflowRuns(args: any) {
