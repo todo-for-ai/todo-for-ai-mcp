@@ -2149,6 +2149,14 @@ export class TodoApiClient {
     }, 'getConflictsSandboxCorrelation');
   }
 
+  async getAgentHealth(days = 30): Promise<any> {
+    logger.info(`[API_CLIENT] Getting agent composite health (days=${days})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/health', { params: { days } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentHealth');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {

@@ -2444,6 +2444,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_health',
+          description: 'Per-Agent composite health score (0-100) for the current user, combining reputation (0.4), assignment completion rate (0.3), conflict penalty (0.15), and sandbox violation penalty (0.15). Also returns raw sub-scores. Reveals a single comparable metric across all Agents.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days for productivity/conflict/violation sub-scores (default 30)' },
+            },
+          },
+        },
+        {
           name: 'share_agent_experience',
           description: 'Share an Agent\'s experience with other agents in the same domain.',
           inputSchema: {
@@ -3902,6 +3912,11 @@ export class TodoMcpServer {
             result = await this.handleGetConflictsSandboxCorrelation(args);
             break;
 
+          case 'get_agent_health':
+            logger.info(`[MCP_SERVER] Executing get_agent_health`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentHealth(args);
+            break;
+
           case 'share_agent_experience':
             logger.info(`[MCP_SERVER] Executing share_agent_experience`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id, experienceId: args?.experience_id });
             result = await this.handleShareAgentExperience(args);
@@ -4327,6 +4342,7 @@ export class TodoMcpServer {
                 'get_agent_productivity_trend',
                 'get_agent_productivity_alerts',
                 'get_conflicts_sandbox_correlation',
+                'get_agent_health',
                 'share_agent_experience',
                 'learn_from_experience',
                 'list_shared_experiences',
@@ -5702,6 +5718,18 @@ export class TodoMcpServer {
         `冲突总数: ${total}, 伴随沙盒违规: ${data.with_violation ?? 0} (${data.violation_rate ?? 0}%)\n` +
         `按冲突类型: ${typeEntries.map(([k, v]: any) => `${k}=${v.with_violation}/${v.total}(${v.rate}%)`).join(', ') || '无'}\n` +
         `关联最多的 Agent(top8): ${top.map((a: any) => `${a.name}#${a.agent_id}(冲突${a.conflicts}/伴随违规${a.with_violation})`).join(', ') || '无'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentHealth(args: any) {
+    const days = args?.days ?? 30;
+    const result = await this.apiClient.getAgentHealth(days);
+    const data = result?.data || result || {};
+    const items = data.items || [];
+    return this.toToolResponse(
+      `Agent 综合健康度(近${data.days ?? days}天, 声誉0.4+完成0.3+冲突0.15+违规0.15):\n` +
+        `${items.map((a: any) => `- ${a.name}#${a.agent_id}[${a.status ?? '?'}]: 健康${a.health_score} (声誉${a.sub_scores.reputation}/完成${a.sub_scores.completion}/冲突${a.sub_scores.conflict}/违规${a.sub_scores.violation}; 完成率${a.completion_rate ?? '—'}% 冲突${a.conflicts} 违规${a.sandbox_violations})`).join('\n') || '无 Agent'}`,
       result,
     );
   }
