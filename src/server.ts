@@ -5493,12 +5493,16 @@ export class TodoMcpServer {
     const domainEntries = Object.entries(byDomain).sort((a: any, b: any) => b[1] - a[1]).slice(0, 8);
     const taskEntries = Object.entries(byTaskType).sort((a: any, b: any) => b[1] - a[1]).slice(0, 8);
     const typeEntries = Object.entries(byType);
+    const bucketEntries = Object.entries(data.by_confidence_bucket || {});
+    const topReused = data.top_reused || [];
     return this.toToolResponse(
       `经验库统计: 共 ${total} 条有效经验\n` +
         `按经验类型: ${typeEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
         `按域(top8): ${domainEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
         `按任务类型(top8): ${taskEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
-        `共享: ${data.shared ?? 0} 条, 累计复用: ${data.total_reuses ?? 0} 次, 平均置信度: ${data.avg_confidence ?? 0}`,
+        `置信度分布: ${bucketEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
+        `共享: ${data.shared ?? 0} 条, 累计复用: ${data.total_reuses ?? 0} 次, 平均置信度: ${data.avg_confidence ?? 0}\n` +
+        `复用最多(top5): ${topReused.slice(0, 5).map((e: any) => `#${e.id} ${e.domain}/${e.experience_type}(${e.times_reused}次,置信${e.confidence})`).join('; ') || '无'}`,
       result,
     );
   }
