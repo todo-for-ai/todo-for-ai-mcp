@@ -2372,6 +2372,11 @@ export class TodoMcpServer {
           inputSchema: { type: 'object', properties: {} },
         },
         {
+          name: 'get_task_stats',
+          description: 'Aggregate task lifecycle stats for the current user projects: total, by_status, by_priority, completion/cancellation rates, average lifecycle duration (hours) for done tasks, lifecycle duration buckets (0-1h ... >7d), average completion rate. Reveals throughput bottlenecks and abandonment.',
+          inputSchema: { type: 'object', properties: {} },
+        },
+        {
           name: 'share_agent_experience',
           description: 'Share an Agent\'s experience with other agents in the same domain.',
           inputSchema: {
@@ -3795,6 +3800,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesStats(args);
             break;
 
+          case 'get_task_stats':
+            logger.info(`[MCP_SERVER] Executing get_task_stats`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskStats(args);
+            break;
+
           case 'share_agent_experience':
             logger.info(`[MCP_SERVER] Executing share_agent_experience`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id, experienceId: args?.experience_id });
             result = await this.handleShareAgentExperience(args);
@@ -4213,6 +4223,7 @@ export class TodoMcpServer {
                 'delete_agent_experience',
                 'recommend_experiences',
                 'get_experiences_stats',
+                'get_task_stats',
                 'share_agent_experience',
                 'learn_from_experience',
                 'list_shared_experiences',
@@ -5471,6 +5482,27 @@ export class TodoMcpServer {
         `按域(top8): ${domainEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
         `按任务类型(top8): ${taskEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
         `共享: ${data.shared ?? 0} 条, 累计复用: ${data.total_reuses ?? 0} 次, 平均置信度: ${data.avg_confidence ?? 0}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskStats(args: any) {
+    const result = await this.apiClient.getTaskStats();
+    const data = result?.data || result || {};
+    const total = data.total ?? 0;
+    const byStatus = data.by_status || {};
+    const byPriority = data.by_priority || {};
+    const buckets = data.lifecycle_buckets || {};
+    const statusEntries = Object.entries(byStatus);
+    const priorityEntries = Object.entries(byPriority);
+    const bucketEntries = Object.entries(buckets);
+    return this.toToolResponse(
+      `任务生命周期统计: 共 ${total} 个任务\n` +
+        `完成率: ${data.completion_rate ?? 0}%, 取消率: ${data.cancellation_rate ?? 0}% (完成 ${data.done_count ?? 0}, 取消 ${data.cancelled_count ?? 0})\n` +
+        `按状态: ${statusEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
+        `按优先级: ${priorityEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
+        `平均完成率: ${data.avg_completion_rate ?? 0}%, 已完成任务平均生命周期: ${data.avg_lifecycle_hours ?? '—'} 小时\n` +
+        `生命周期分布(已完成): ${bucketEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}`,
       result,
     );
   }
