@@ -2486,12 +2486,16 @@ export class TodoMcpServer {
         },
         {
           name: 'get_agent_health_alerts',
-          description: 'Low-health Agent alert list for the current user. Returns Agents whose composite health_score < min_health_score (default 60), with triggering reasons (low reputation / low completion / conflicts / violations). Each entry includes full health fields. Surfaces Agents needing attention.',
+          description: 'Low-health Agent alert list for the current user. Returns Agents whose composite health_score < min_health_score (default 60), with triggering reasons (low reputation / low completion / conflicts / violations) and concrete improvement recommendations. Optional w_reputation/w_completion/w_conflict/w_violation override the default sub-score weights (0.4/0.3/0.15/0.15, normalised to 1). Each entry includes full health fields. Surfaces Agents needing attention.',
           inputSchema: {
             type: 'object',
             properties: {
               days: { type: 'integer', description: 'Lookback window in days (default 30)' },
               min_health_score: { type: 'number', description: 'Health score threshold (default 60)' },
+              w_reputation: { type: 'number', description: 'Reputation sub-score weight (default 0.4)' },
+              w_completion: { type: 'number', description: 'Completion sub-score weight (default 0.3)' },
+              w_conflict: { type: 'number', description: 'Conflict sub-score weight (default 0.15)' },
+              w_violation: { type: 'number', description: 'Violation sub-score weight (default 0.15)' },
             },
           },
         },
@@ -5848,12 +5852,16 @@ export class TodoMcpServer {
     const params: any = {};
     if (args?.days != null) params.days = args.days;
     if (args?.min_health_score != null) params.min_health_score = args.min_health_score;
+    if (args?.w_reputation != null) params.w_reputation = args.w_reputation;
+    if (args?.w_completion != null) params.w_completion = args.w_completion;
+    if (args?.w_conflict != null) params.w_conflict = args.w_conflict;
+    if (args?.w_violation != null) params.w_violation = args.w_violation;
     const result = await this.apiClient.getAgentHealthAlerts(params);
     const data = result?.data || result || {};
     const items = data.items || [];
     return this.toToolResponse(
       `低健康 Agent 预警(近${data.days ?? 30}天, 健康分<${data.min_health_score ?? 60}): ${items.length} 个\n` +
-        `${items.map((a: any) => `- ${a.name}#${a.agent_id}: 健康${a.health_score} (声誉${a.sub_scores.reputation}/完成${a.sub_scores.completion}/冲突${a.sub_scores.conflict}/违规${a.sub_scores.violation}; 原因[${(a.reasons || []).join('; ')}])`).join('\n') || '无预警'}`,
+        `${items.map((a: any) => `- ${a.name}#${a.agent_id}: 健康${a.health_score} (声誉${a.sub_scores.reputation}/完成${a.sub_scores.completion}/冲突${a.sub_scores.conflict}/违规${a.sub_scores.violation}; 原因[${(a.reasons || []).join('; ')}])\n  建议: ${(a.recommendations || []).join(' | ') || '暂无'}`).join('\n') || '无预警'}`,
       result,
     );
   }

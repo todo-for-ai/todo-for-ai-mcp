@@ -2175,7 +2175,7 @@ export class TodoApiClient {
     }, 'getAgentHealthTrend');
   }
 
-  async getAgentHealthAlerts(params: { days?: number; min_health_score?: number } = {}): Promise<any> {
+  async getAgentHealthAlerts(params: { days?: number; min_health_score?: number; w_reputation?: number; w_completion?: number; w_conflict?: number; w_violation?: number } = {}): Promise<any> {
     logger.info('[API_CLIENT] Getting agent health alerts');
     return this.executeWithRetry(async () => {
       const response = await this.client.get('agents/health/alerts', { params });
