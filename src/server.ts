@@ -2242,6 +2242,20 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_reputation_history',
+          description: 'Get the timeline of notable reputation changes for an Agent (failures and quality-feedback deltas), reconstructed from audit events. Each point carries the resulting score, so this is useful for charting the reputation trend over time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              agent_id: { type: 'integer', description: 'Agent ID' },
+              limit: { type: 'integer', description: 'Max number of points to return (1-500, default 100)' },
+              since: { type: 'string', description: 'ISO timestamp lower bound (inclusive)' },
+              until: { type: 'string', description: 'ISO timestamp upper bound (inclusive)' },
+            },
+            required: ['agent_id'],
+          },
+        },
+        {
           name: 'list_agent_experiences',
           description: 'List experiences for an Agent. Experiences capture success/failure patterns from past tasks.',
           inputSchema: {
@@ -3655,6 +3669,11 @@ export class TodoMcpServer {
             result = await this.handleRecalculateReputation(args);
             break;
 
+          case 'get_agent_reputation_history':
+            logger.info(`[MCP_SERVER] Executing get_agent_reputation_history`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id });
+            result = await this.handleGetAgentReputationHistory(args);
+            break;
+
           case 'list_agent_experiences':
             logger.info(`[MCP_SERVER] Executing list_agent_experiences`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id });
             result = await this.handleListAgentExperiences(args);
@@ -4063,6 +4082,7 @@ export class TodoMcpServer {
                 'get_agent_reputation',
                 'list_reputations',
                 'recalculate_reputation',
+                'get_agent_reputation_history',
                 'list_agent_experiences',
                 'create_agent_experience',
                 'get_agent_experience',
@@ -5183,6 +5203,21 @@ export class TodoMcpServer {
     const result = await this.apiClient.recalculateReputation(args);
     const data = result?.data || result;
     return this.toToolResponse(`Agent #${args?.agent_id} 声誉已重新计算: ${data?.score?.toFixed(1) || '50.0'}`, result);
+  }
+
+  private async handleGetAgentReputationHistory(args: any) {
+    const result = await this.apiClient.getAgentReputationHistory(args);
+    const data = result?.data || result;
+    const points = Array.isArray(data?.points) ? data.points : [];
+    const summary = points.slice(-10).map((p: any) => {
+      const delta = typeof p.score_delta === 'number' ? (p.score_delta >= 0 ? `+${p.score_delta}` : `${p.score_delta}`) : '?';
+      const when = p.at ? String(p.at).slice(0, 19).replace('T', ' ') : '?';
+      return `• ${when}: ${p.success ? '成功' : '失败'} ${delta} → ${typeof p.new_score === 'number' ? p.new_score.toFixed(1) : '?'}`;
+    }).join('\n');
+    return this.toToolResponse(
+      `Agent #${args?.agent_id} 声誉历史 (当前 ${typeof data?.current_score === 'number' ? data.current_score.toFixed(1) : '?'}, 共 ${points.length} 个变化点):\n${summary || '暂无声誉变化记录'}`,
+      result
+    );
   }
 
   private async handleListAgentExperiences(args: any) {

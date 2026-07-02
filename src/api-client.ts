@@ -1987,6 +1987,20 @@ export class TodoApiClient {
     }, `recalculateReputation(${args.agent_id})`);
   }
 
+  async getAgentReputationHistory(args: { agent_id: number; limit?: number; since?: string; until?: string }): Promise<any> {
+    logger.info(`[API_CLIENT] Getting reputation history for agent ${args.agent_id}`);
+
+    const params: Record<string, string> = {};
+    if (args.limit) params.limit = String(args.limit);
+    if (args.since) params.since = args.since;
+    if (args.until) params.until = args.until;
+
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get(`agents/${args.agent_id}/reputation/history`, { params });
+      return this.unwrapApiData<any>(response.data);
+    }, `getAgentReputationHistory(${args.agent_id})`);
+  }
+
   // ---- Agent Experience (Collective Intelligence) ----
 
   async listAgentExperiences(agentId: number, params?: Record<string, string>): Promise<any> {
