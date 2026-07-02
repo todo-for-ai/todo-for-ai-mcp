@@ -2075,6 +2075,14 @@ export class TodoApiClient {
     }, `recommendExperiences(${agentId})`);
   }
 
+  async getExperiencesStats(): Promise<any> {
+    logger.info('[API_CLIENT] Getting experiences stats');
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/experiences/stats');
+      return this.unwrapApiData<any>(response.data);
+    }, 'getExperiencesStats');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {

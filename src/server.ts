@@ -2367,6 +2367,11 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_experiences_stats',
+          description: 'Aggregate AgentExperience stats for the current user: totals, breakdowns by domain/task_type/experience_type, shared count, total reuses, average confidence. Reveals where the collective knowledge base is concentrated.',
+          inputSchema: { type: 'object', properties: {} },
+        },
+        {
           name: 'share_agent_experience',
           description: 'Share an Agent\'s experience with other agents in the same domain.',
           inputSchema: {
@@ -3785,6 +3790,11 @@ export class TodoMcpServer {
             result = await this.handleRecommendExperiences(args);
             break;
 
+          case 'get_experiences_stats':
+            logger.info(`[MCP_SERVER] Executing get_experiences_stats`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesStats(args);
+            break;
+
           case 'share_agent_experience':
             logger.info(`[MCP_SERVER] Executing share_agent_experience`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id, experienceId: args?.experience_id });
             result = await this.handleShareAgentExperience(args);
@@ -4202,6 +4212,7 @@ export class TodoMcpServer {
                 'update_agent_experience',
                 'delete_agent_experience',
                 'recommend_experiences',
+                'get_experiences_stats',
                 'share_agent_experience',
                 'learn_from_experience',
                 'list_shared_experiences',
@@ -5440,6 +5451,26 @@ export class TodoMcpServer {
     const items = Array.isArray(data) ? data : data?.items || [];
     return this.toToolResponse(
       `Agent #${args?.agent_id} 推荐经验: ${items.length} 条\n${items.map((e: any) => `- [${e.experience_type}] ${e.domain || '无域'}: ${e.key_learnings?.substring(0, 80) || ''} (置信度: ${e.confidence})`).join('\n')}`,
+      result,
+    );
+  }
+
+  private async handleGetExperiencesStats(args: any) {
+    const result = await this.apiClient.getExperiencesStats();
+    const data = result?.data || result || {};
+    const total = data.total ?? 0;
+    const byDomain = data.by_domain || {};
+    const byTaskType = data.by_task_type || {};
+    const byType = data.by_experience_type || {};
+    const domainEntries = Object.entries(byDomain).sort((a: any, b: any) => b[1] - a[1]).slice(0, 8);
+    const taskEntries = Object.entries(byTaskType).sort((a: any, b: any) => b[1] - a[1]).slice(0, 8);
+    const typeEntries = Object.entries(byType);
+    return this.toToolResponse(
+      `经验库统计: 共 ${total} 条有效经验\n` +
+        `按经验类型: ${typeEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
+        `按域(top8): ${domainEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
+        `按任务类型(top8): ${taskEntries.map(([k, v]: any) => `${k}=${v}`).join(', ') || '无'}\n` +
+        `共享: ${data.shared ?? 0} 条, 累计复用: ${data.total_reuses ?? 0} 次, 平均置信度: ${data.avg_confidence ?? 0}`,
       result,
     );
   }
