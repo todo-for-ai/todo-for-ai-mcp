@@ -2932,6 +2932,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_conflicts_by_agent',
+          description: 'Per-Agent conflict involvement counts (total + active), top N by total, enriched with name/kind. Reveals which Agents are most conflict-prone.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max number of agents to return (1-100, default 20)' },
+            },
+          },
+        },
+        {
           name: 'list_sandbox_templates',
           description: 'List preset sandbox policy templates (read_only_research, code_generation, data_analysis, full_autonomy, sandboxed_review).',
           inputSchema: { type: 'object', properties: {} },
@@ -3954,6 +3964,11 @@ export class TodoMcpServer {
             result = await this.handleGetConflictsTrend(args);
             break;
 
+          case 'get_conflicts_by_agent':
+            logger.info(`[MCP_SERVER] Executing get_conflicts_by_agent`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetConflictsByAgent(args);
+            break;
+
           case 'list_sandbox_templates':
             logger.info(`[MCP_SERVER] Executing list_sandbox_templates`, { requestId, instanceId: this.instanceId });
             result = await this.handleListSandboxTemplates(args);
@@ -4152,6 +4167,7 @@ export class TodoMcpServer {
                 'ignore_conflict',
                 'get_conflicts_dashboard',
                 'get_conflicts_trend',
+                'get_conflicts_by_agent',
                 'list_sandbox_templates',
                 'instantiate_sandbox_template',
                 'auto_resolve_conflicts',
@@ -5840,6 +5856,16 @@ export class TodoMcpServer {
       `冲突趋势 (近 ${d?.days || 30} 天): 累计检测 ${totalDetected}, 累计解决 ${totalResolved}\n${recent || '暂无数据'}`,
       result,
     );
+  }
+
+  private async handleGetConflictsByAgent(args: any) {
+    const result = await this.apiClient.getConflictsByAgent(args);
+    const d = result?.data || result;
+    const items = Array.isArray(d?.items) ? d.items : [];
+    const summary = items
+      .map((it: any) => `• ${it.name || 'Agent'} #${it.agent_id} [${it.kind || '?'}]: 共 ${it.total} (活跃 ${it.active})`)
+      .join('\n');
+    return this.toToolResponse(`冲突按 Agent 分布 (top ${items.length}):\n${summary || '暂无冲突数据'}`, result);
   }
 
   private async handleListSandboxTemplates(args: any) {
