@@ -2399,6 +2399,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_productivity',
+          description: 'Per-Agent productivity stats for the current user: total assignments, done, failed, cancelled, expired, in-progress, completion rate, and average completion duration (hours) for done assignments. Reveals each Agent throughput and reliability.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (default 30)' },
+              limit: { type: 'integer', description: 'Max agents returned (default 20)' },
+            },
+          },
+        },
+        {
           name: 'share_agent_experience',
           description: 'Share an Agent\'s experience with other agents in the same domain.',
           inputSchema: {
@@ -3837,6 +3848,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowFailureCorrelationByStep(args);
             break;
 
+          case 'get_agent_productivity':
+            logger.info(`[MCP_SERVER] Executing get_agent_productivity`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentProductivity(args);
+            break;
+
           case 'share_agent_experience':
             logger.info(`[MCP_SERVER] Executing share_agent_experience`, { requestId, instanceId: this.instanceId, agentId: args?.agent_id, experienceId: args?.experience_id });
             result = await this.handleShareAgentExperience(args);
@@ -4258,6 +4274,7 @@ export class TodoMcpServer {
                 'get_task_stats',
                 'get_workflow_failure_correlation',
                 'get_workflow_failure_correlation_by_step',
+                'get_agent_productivity',
                 'share_agent_experience',
                 'learn_from_experience',
                 'list_shared_experiences',
@@ -5574,6 +5591,19 @@ export class TodoMcpServer {
     return this.toToolResponse(
       `按步骤的失败关联(近${data.days ?? days}天, ±${data.window_hours ?? windowHours}h):\n` +
         `${items.map((it: any) => `- ${it.step_key}: 失败${it.failed} 冲突${it.with_conflict}(${it.conflict_rate}%) 违规${it.with_violation}(${it.violation_rate}%)`).join('\n') || '无失败步骤'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentProductivity(args: any) {
+    const days = args?.days ?? 30;
+    const limit = args?.limit ?? 20;
+    const result = await this.apiClient.getAgentProductivity(days, limit);
+    const data = result?.data || result || {};
+    const items = data.items || [];
+    return this.toToolResponse(
+      `Agent 产出效率(近${data.days ?? days}天):\n` +
+        `${items.map((a: any) => `- ${a.name}#${a.agent_id}: 分配${a.total} 完成${a.done}(率${a.completion_rate}%) 失败${a.failed} 取消${a.cancelled} 过期${a.expired} 进行中${a.in_progress} 平均完成${a.avg_completion_hours ?? '—'}h`).join('\n') || '无分配'}`,
       result,
     );
   }
