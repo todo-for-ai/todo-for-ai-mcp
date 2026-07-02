@@ -5775,9 +5775,17 @@ export class TodoMcpServer {
     const result = await this.apiClient.getAgentProductivityTrend(days);
     const data = result?.data || result || {};
     const trend = data.trend || [];
+    const kindTotals: any = data.by_kind_totals || {};
+    const kindEntries = Object.entries(kindTotals) as [string, any][];
     return this.toToolResponse(
       `Agent 产出趋势(近${data.days ?? days}天): 累计完成 ${data.total_done ?? 0}, 失败 ${data.total_failed ?? 0}\n` +
-        `${trend.map((b: any) => `${b.date}: 完成${b.done} 失败${b.failed}`).join('\n') || '无数据'}`,
+      `${kindEntries.length ? `按kind分层(累计): ${kindEntries.map(([k, v]: any) => `${k}=完成${v.done}失败${v.failed}`).join(', ')}\n` : ''}` +
+      `${trend.map((b: any) => {
+        const kb: any = b.by_kind || {};
+        const kbEntries = Object.entries(kb) as [string, any][];
+        const kbStr = kbEntries.length ? ` [${kbEntries.map(([k, v]: any) => `${k}=${v.done}`).join(',')}]` : '';
+        return `${b.date}: 完成${b.done} 失败${b.failed}${kbStr}`;
+      }).join('\n') || '无数据'}`,
       result,
     );
   }
