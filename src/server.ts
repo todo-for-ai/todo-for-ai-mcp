@@ -2404,6 +2404,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_experiences_reuse_trend',
+          description: 'Daily reuse + decay trend for the user valid experiences. Buckets experiences by last-reused (or creation) date. Per day: experiences reused, total reuse count, average confidence, decayed count (confidence<0.5). Reveals whether reuse keeps knowledge fresh or stale entries linger.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_task_stats',
           description: 'Aggregate task lifecycle stats for the current user projects: total, by_status, by_priority, completion/cancellation rates, average lifecycle duration (hours) for done tasks, lifecycle duration buckets (0-1h ... >7d), average completion rate. Reveals throughput bottlenecks and abandonment.',
           inputSchema: { type: 'object', properties: {} },
@@ -4003,6 +4013,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesScatter(args);
             break;
 
+          case 'get_experiences_reuse_trend':
+            logger.info(`[MCP_SERVER] Executing get_experiences_reuse_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesReuseTrend(args);
+            break;
+
           case 'get_task_stats':
             logger.info(`[MCP_SERVER] Executing get_task_stats`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskStats(args);
@@ -4499,6 +4514,7 @@ export class TodoMcpServer {
                 'get_experiences_stats',
                 'get_experiences_low_confidence',
                 'get_experiences_scatter',
+                'get_experiences_reuse_trend',
                 'get_task_stats',
                 'get_task_overdue_trend',
                 'get_task_completion_by_project',
@@ -5849,6 +5865,32 @@ export class TodoMcpServer {
       `复用分布: ${Object.entries(buckets).map(([k, v]: any) => `${k}=${v}`).join(', ')}\n` +
       `高置信(≥0.7)且被复用: ${highConfReused} / 低置信(<0.5)且被复用: ${lowConfReused}\n` +
       `复用最多(top8):\n${top.join('\n') || '无'}`,
+      result,
+    );
+  }
+
+  private async handleGetExperiencesReuseTrend(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const result = await this.apiClient.getExperiencesReuseTrend(days);
+    const data = result?.data || result || {};
+    const trend = Array.isArray(data?.trend) ? data.trend : [];
+    const totalReused = data?.total_reused ?? 0;
+    const totalReuseCount = data?.total_reuse_count ?? 0;
+    const decayedCount = data?.decayed_count ?? 0;
+    const totalExp = data?.total_experiences ?? 0;
+    const recent = trend.slice(-10);
+    const lines = recent.map((b: any) => {
+      const dt = b.date || '';
+      const r = b.reused ?? 0;
+      const rc = b.reuse_count ?? 0;
+      const ac = b.avg_confidence ?? 0;
+      const dc = b.decayed ?? 0;
+      return `  ${dt}: 复用经验=${r} 累计复用次数=${rc} 平均置信度=${ac} 已衰减=${dc}`;
+    });
+    return this.toToolResponse(
+      `经验复用+衰减趋势(近${days}天, 共${totalExp}条经验):\n` +
+      `被复用经验=${totalReused} 累计复用次数=${totalReuseCount} 已衰减(置信度<0.5)=${decayedCount}\n` +
+      `近${recent.length}日明细:\n${lines.join('\n') || '  无'}`,
       result,
     );
   }

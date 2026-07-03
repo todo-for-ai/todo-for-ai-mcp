@@ -2252,6 +2252,16 @@ export class TodoApiClient {
     }, 'getExperiencesScatter');
   }
 
+  async getExperiencesReuseTrend(days = 30): Promise<any> {
+    logger.info(`[API_CLIENT] Getting experiences reuse trend for ${days} days`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/experiences/reuse-trend', {
+        params: { days },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getExperiencesReuseTrend');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {
