@@ -2507,6 +2507,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_failure_reasons',
+          description: 'Distribution of Agent run failure reasons. Buckets FAILED AgentRun rows by a normalized error type (first line of the error text, lowercased, truncated to 80 chars). Returns per-reason counts and affected agent names, sorted by count. Surfaces the most common failure causes across the fleet.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max reasons returned (1-50, default 15)' },
+            },
+          },
+        },
+        {
           name: 'get_conflicts_sandbox_correlation',
           description: 'Cross-dimension correlation between Agent conflicts and sandbox violations. For each conflict, checks whether a sandbox violation involving a conflict party occurred within ±window_hours. Reports co-occurrence rate, breakdown by conflict_type, and top agents whose conflicts most coincide with violations.',
           inputSchema: {
@@ -4042,6 +4053,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentProductivityHourlyHeatmap(args);
             break;
 
+          case 'get_agent_failure_reasons':
+            logger.info(`[MCP_SERVER] Executing get_agent_failure_reasons`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentFailureReasons(args);
+            break;
+
           case 'get_conflicts_sandbox_correlation':
             logger.info(`[MCP_SERVER] Executing get_conflicts_sandbox_correlation`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetConflictsSandboxCorrelation(args);
@@ -4493,6 +4509,7 @@ export class TodoMcpServer {
                 'get_agent_productivity_alerts',
                 'get_agent_productivity_by_kind',
                 'get_agent_productivity_hourly_heatmap',
+                'get_agent_failure_reasons',
                 'get_conflicts_sandbox_correlation',
                 'get_agent_health',
                 'get_agent_health_trend',
@@ -6000,6 +6017,21 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `Agent 小时维度产出热力(近${data.days ?? days}天, 共${agents.length}个Agent${peakHour != null ? `, 全队峰值${peakHour}时` : ''}):\n${lines.join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentFailureReasons(args: any) {
+    const days = args?.days ?? 30;
+    const limit = args?.limit ?? 15;
+    const result = await this.apiClient.getAgentFailureReasons(days, limit);
+    const data = result?.data || result || {};
+    const items: any[] = data.items || [];
+    const lines = items.map((it: any) =>
+      `- [${it.count}次] ${it.reason} (涉及: ${(it.affected_agent_names || []).slice(0, 5).join(', ') || '无'})`,
+    );
+    return this.toToolResponse(
+      `Agent 失败原因分布(近${data.days ?? days}天, 共${data.total_failed_runs ?? 0}次失败):\n${lines.join('\n') || '无失败记录'}`,
       result,
     );
   }

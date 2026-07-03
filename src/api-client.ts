@@ -2186,6 +2186,16 @@ export class TodoApiClient {
     }, 'getAgentProductivityHourlyHeatmap');
   }
 
+  async getAgentFailureReasons(days = 30, limit = 15): Promise<any> {
+    logger.info(`[API_CLIENT] Getting agent failure reasons (days=${days}, limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/failure-reasons', {
+        params: { days, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentFailureReasons');
+  }
+
   async getConflictsSandboxCorrelation(days = 30, windowHours = 2): Promise<any> {
     logger.info(`[API_CLIENT] Getting conflicts-sandbox correlation (days=${days}, window=${windowHours}h)`);
     return this.executeWithRetry(async () => {
