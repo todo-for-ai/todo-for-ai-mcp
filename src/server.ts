@@ -2485,6 +2485,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_productivity_hourly_heatmap',
+          description: 'Hour-of-day × Agent completion heatmap. Buckets done assignments by the hour (0-23) of completed_at and agent_id, returning a matrix plus per-agent totals and the fleet peak hour. Reveals when each Agent is most productive.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max agents returned (1-50, default 15)' },
+            },
+          },
+        },
+        {
           name: 'get_conflicts_sandbox_correlation',
           description: 'Cross-dimension correlation between Agent conflicts and sandbox violations. For each conflict, checks whether a sandbox violation involving a conflict party occurred within ±window_hours. Reports co-occurrence rate, breakdown by conflict_type, and top agents whose conflicts most coincide with violations.',
           inputSchema: {
@@ -4010,6 +4021,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentProductivityByKind(args);
             break;
 
+          case 'get_agent_productivity_hourly_heatmap':
+            logger.info(`[MCP_SERVER] Executing get_agent_productivity_hourly_heatmap`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentProductivityHourlyHeatmap(args);
+            break;
+
           case 'get_conflicts_sandbox_correlation':
             logger.info(`[MCP_SERVER] Executing get_conflicts_sandbox_correlation`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetConflictsSandboxCorrelation(args);
@@ -4459,6 +4475,7 @@ export class TodoMcpServer {
                 'get_agent_productivity_trend',
                 'get_agent_productivity_alerts',
                 'get_agent_productivity_by_kind',
+                'get_agent_productivity_hourly_heatmap',
                 'get_conflicts_sandbox_correlation',
                 'get_agent_health',
                 'get_agent_health_trend',
@@ -5929,6 +5946,28 @@ export class TodoMcpServer {
     return this.toToolResponse(
       `按 Agent kind 产出效率对比(近${data.days ?? days}天): ${items.length} 类\n` +
         `${items.map((k: any) => `- ${k.kind}: Agent数${k.agent_count} 分配${k.total} 完成${k.done}(率${k.completion_rate}%) 失败${k.failed}(率${k.failure_rate}%) 平均完成${k.avg_completion_hours ?? 'N/A'}h`).join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentProductivityHourlyHeatmap(args: any) {
+    const days = args?.days ?? 30;
+    const limit = args?.limit ?? 15;
+    const result = await this.apiClient.getAgentProductivityHourlyHeatmap(days, limit);
+    const data = result?.data || result || {};
+    const agents: any[] = data.agents || [];
+    const matrix: any = data.matrix || {};
+    const peakHour = data.peak_hour;
+    const lines = agents.map((a: any) => {
+      const row = matrix[String(a.agent_id)] || {};
+      // 取该 Agent 完成 top3 小时
+      const topHours = Object.entries(row).map(([h, c]: any) => [h, c] as [string, number])
+        .sort((x, y) => y[1] - x[1]).slice(0, 3)
+        .map(([h, c]) => `${h}时=${c}`).join(' ');
+      return `- ${a.name}#${a.agent_id} (完成${a.done}): ${topHours || '无'}`;
+    });
+    return this.toToolResponse(
+      `Agent 小时维度产出热力(近${data.days ?? days}天, 共${agents.length}个Agent${peakHour != null ? `, 全队峰值${peakHour}时` : ''}):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }
