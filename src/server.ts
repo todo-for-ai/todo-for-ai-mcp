@@ -6009,9 +6009,17 @@ export class TodoMcpServer {
     const data = result?.data || result || {};
     const trend = data.trend || [];
     const scope = data.agent_id ? `Agent ${data.agent_name ?? '#' + data.agent_id} ` : '';
+    const kindOverall: any = data.by_kind_overall || {};
+    const kindEntries = Object.entries(kindOverall) as [string, any][];
     return this.toToolResponse(
       `${scope}健康度趋势(近${data.days ?? days}天): 累计正向 ${data.total_positive ?? 0}, 负向 ${data.total_negative ?? 0}, 冲突 ${data.total_conflicts ?? 0}, 违规 ${data.total_violations ?? 0}\n` +
-        `${trend.map((b: any) => `${b.date}: 平均声誉${b.avg_reputation ?? '—'} 正向${b.positive} 负向${b.negative} 冲突${b.conflicts ?? 0} 违规${b.sandbox_violations ?? 0}`).join('\n') || '无数据'}`,
+      `${kindEntries.length ? `按kind平均声誉(累计): ${kindEntries.map(([k, v]: any) => `${k}=${v}`).join(', ')}\n` : ''}` +
+      `${trend.map((b: any) => {
+        const kb: any = b.by_kind_avg || {};
+        const kbEntries = Object.entries(kb) as [string, any][];
+        const kbStr = kbEntries.length ? ` [${kbEntries.map(([k, v]: any) => `${k}=${v}`).join(',')}]` : '';
+        return `${b.date}: 平均声誉${b.avg_reputation ?? '—'} 正向${b.positive} 负向${b.negative} 冲突${b.conflicts ?? 0} 违规${b.sandbox_violations ?? 0}${kbStr}`;
+      }).join('\n') || '无数据'}`,
       result,
     );
   }
