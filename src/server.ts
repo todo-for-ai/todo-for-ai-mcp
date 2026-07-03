@@ -2409,6 +2409,16 @@ export class TodoMcpServer {
           inputSchema: { type: 'object', properties: {} },
         },
         {
+          name: 'get_task_overdue_trend',
+          description: 'Daily overdue task trend by due_date: per-day overdue count (due_date<now, status not done/cancelled) plus per-priority breakdown. Reveals whether overdue workload is accumulating over time and which priorities bear the brunt.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failure_correlation',
           description: 'Cross-dimension correlation between failed workflow steps and collaboration conflicts / sandbox violations. For each failed step, checks whether a conflict or sandbox violation involving the same Agent occurred within ±window_hours. Reports co-occurrence rates and top agents whose failures most coincide with conflicts/violations.',
           inputSchema: {
@@ -3965,6 +3975,11 @@ export class TodoMcpServer {
             result = await this.handleGetTaskStats(args);
             break;
 
+          case 'get_task_overdue_trend':
+            logger.info(`[MCP_SERVER] Executing get_task_overdue_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskOverdueTrend(args);
+            break;
+
           case 'get_workflow_failure_correlation':
             logger.info(`[MCP_SERVER] Executing get_workflow_failure_correlation`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailureCorrelation(args);
@@ -4437,6 +4452,7 @@ export class TodoMcpServer {
                 'get_experiences_low_confidence',
                 'get_experiences_scatter',
                 'get_task_stats',
+                'get_task_overdue_trend',
                 'get_workflow_failure_correlation',
                 'get_workflow_failure_correlation_by_step',
                 'get_agent_productivity',
@@ -5806,6 +5822,21 @@ export class TodoMcpServer {
         `逾期: ${data.overdue_count ?? 0} 个 (有截止日 ${data.with_due_date ?? 0} 个, 逾期率 ${data.overdue_rate ?? 0}%)\n` +
         `按项目(top10): ${(data.by_project || []).map((p: any) => `${p.name}=${p.count}`).join(', ') || '无'}\n` +
         `优先级×状态矩阵: ${Object.entries(data.by_priority_status || {}).map(([p, sts]: any) => `${p}:{${Object.entries(sts).map(([s, c]: any) => `${s}=${c}`).join(',')}}`).join('; ') || '无'}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskOverdueTrend(args: any) {
+    const days = args?.days ?? 30;
+    const result = await this.apiClient.getTaskOverdueTrend(days);
+    const data = result?.data || result || {};
+    const trend = data.trend || [];
+    const priorityTotals: any = data.by_priority_totals || {};
+    const priorityEntries = Object.entries(priorityTotals) as [string, any][];
+    return this.toToolResponse(
+      `任务逾期趋势(近${data.days ?? days}天, 按due_date分日, 共${data.total_overdue ?? 0}个逾期):\n` +
+      `${priorityEntries.length ? `按优先级累计: ${priorityEntries.map(([k, v]: any) => `${k}=${v}`).join(', ')}\n` : ''}` +
+      `${trend.map((b: any) => `${b.date}: 逾期${b.overdue}${Object.keys(b.by_priority || {}).length ? ` [${Object.entries(b.by_priority).map(([k, v]: any) => `${k}=${v}`).join(',')}]` : ''}`).join('\n') || '无逾期数据'}`,
       result,
     );
   }
