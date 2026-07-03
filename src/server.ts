@@ -2419,6 +2419,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_task_completion_by_project',
+          description: 'Daily task completion trend grouped by project. Buckets done tasks by calendar day of completed_at and project_id, returning per-project daily series plus totals (top N by total completed). Reveals which projects are actively delivering over time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max projects returned (1-20, default 8)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failure_correlation',
           description: 'Cross-dimension correlation between failed workflow steps and collaboration conflicts / sandbox violations. For each failed step, checks whether a conflict or sandbox violation involving the same Agent occurred within ±window_hours. Reports co-occurrence rates and top agents whose failures most coincide with conflicts/violations.',
           inputSchema: {
@@ -3991,6 +4002,11 @@ export class TodoMcpServer {
             result = await this.handleGetTaskOverdueTrend(args);
             break;
 
+          case 'get_task_completion_by_project':
+            logger.info(`[MCP_SERVER] Executing get_task_completion_by_project`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskCompletionByProject(args);
+            break;
+
           case 'get_workflow_failure_correlation':
             logger.info(`[MCP_SERVER] Executing get_workflow_failure_correlation`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailureCorrelation(args);
@@ -4469,6 +4485,7 @@ export class TodoMcpServer {
                 'get_experiences_scatter',
                 'get_task_stats',
                 'get_task_overdue_trend',
+                'get_task_completion_by_project',
                 'get_workflow_failure_correlation',
                 'get_workflow_failure_correlation_by_step',
                 'get_agent_productivity',
@@ -5854,6 +5871,21 @@ export class TodoMcpServer {
       `任务逾期趋势(近${data.days ?? days}天, 按due_date分日, 共${data.total_overdue ?? 0}个逾期):\n` +
       `${priorityEntries.length ? `按优先级累计: ${priorityEntries.map(([k, v]: any) => `${k}=${v}`).join(', ')}\n` : ''}` +
       `${trend.map((b: any) => `${b.date}: 逾期${b.overdue}${Object.keys(b.by_priority || {}).length ? ` [${Object.entries(b.by_priority).map(([k, v]: any) => `${k}=${v}`).join(',')}]` : ''}`).join('\n') || '无逾期数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskCompletionByProject(args: any) {
+    const days = args?.days ?? 30;
+    const limit = args?.limit ?? 8;
+    const result = await this.apiClient.getTaskCompletionByProject(days, limit);
+    const data = result?.data || result || {};
+    const series: any[] = data.series || [];
+    const lines = series.map((s: any) =>
+      `- ${s.name}#${s.project_id} (完成${s.total}): ${s.daily.map((d: any) => `${d.date}=${d.done}`).slice(-7).join(', ')}`,
+    );
+    return this.toToolResponse(
+      `任务按项目完成趋势(近${data.days ?? days}天, 共${data.total_done ?? 0}个完成, top${series.length}项目, 显示近7天):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }

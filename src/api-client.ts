@@ -2110,6 +2110,14 @@ export class TodoApiClient {
     }, 'getTaskOverdueTrend');
   }
 
+  async getTaskCompletionByProject(days = 30, limit = 8): Promise<any> {
+    logger.info(`[API_CLIENT] Getting task completion by project (days=${days}, limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('tasks/completion-by-project', { params: { days, limit } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getTaskCompletionByProject');
+  }
+
   async getWorkflowFailureCorrelation(days = 30, windowHours = 2): Promise<any> {
     logger.info(`[API_CLIENT] Getting workflow failure correlation (days=${days}, window=${windowHours}h)`);
     return this.executeWithRetry(async () => {
