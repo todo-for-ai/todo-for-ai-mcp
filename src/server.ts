@@ -2462,6 +2462,14 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_experiences_source_distribution',
+          description: 'Experience count by creation source. Groups by origin: manual (no workflow run), workflow (has source_workflow_run_id), auto_step (has source_step_key but no workflow). Per-source: count, percentage, avg confidence, avg reuses. Reveals where the experience pool comes from.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+        {
           name: 'get_task_stats',
           description: 'Aggregate task lifecycle stats for the current user projects: total, by_status, by_priority, completion/cancellation rates, average lifecycle duration (hours) for done tasks, lifecycle duration buckets (0-1h ... >7d), average completion rate. Reveals throughput bottlenecks and abandonment.',
           inputSchema: { type: 'object', properties: {} },
@@ -4133,6 +4141,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesConfidenceDistribution(args);
             break;
 
+          case 'get_experiences_source_distribution':
+            logger.info(`[MCP_SERVER] Executing get_experiences_source_distribution`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesSourceDistribution(args);
+            break;
+
           case 'get_task_stats':
             logger.info(`[MCP_SERVER] Executing get_task_stats`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskStats(args);
@@ -4655,6 +4668,7 @@ export class TodoMcpServer {
                 'get_experiences_decay_by_domain',
                 'get_experiences_decay_by_task_type',
                 'get_experiences_confidence_distribution',
+                'get_experiences_source_distribution',
                 'get_task_stats',
                 'get_task_overdue_trend',
                 'get_task_overdue_by_assignee',
@@ -6110,6 +6124,20 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `经验置信度分布(共${total}条):\n${lines.join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetExperiencesSourceDistribution(args: any) {
+    const result = await this.apiClient.getExperiencesSourceDistribution();
+    const data = result?.data || result || {};
+    const sources: any[] = data.sources || [];
+    const total = data.total ?? 0;
+    const lines = sources.map((s: any) =>
+      `${s.source}: ${s.count}条(${s.percentage}%) 均置信度=${s.avg_confidence} 均复用=${s.avg_reuses}`,
+    );
+    return this.toToolResponse(
+      `经验来源分布(共${total}条):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }
