@@ -1335,6 +1335,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_step_failure_rate',
+          description: 'Per-step-key failure rate ranking. For each step_key: total runs, failed count, failure rate percentage. Sorted by failure rate descending. Reveals which workflow steps are the least reliable.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max step keys returned (1-50, default 15)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -3744,6 +3755,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowRunDurationPercentiles(args);
             break;
 
+          case 'get_workflow_step_failure_rate':
+            logger.info(`[MCP_SERVER] Executing get_workflow_step_failure_rate`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowStepFailureRate(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4593,6 +4609,7 @@ export class TodoMcpServer {
                 'get_workflow_step_stats',
                 'get_workflow_step_duration_histogram',
                 'get_workflow_run_duration_percentiles',
+                'get_workflow_step_failure_rate',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_run',
@@ -5262,6 +5279,23 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `工作流运行时长分位数趋势(近${days}天, 共${data.total_runs ?? 0}次 总均${data.total_avg_duration ?? 0}s):\n${lines.join('\n') || '暂无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowStepFailureRate(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(50, Number(args?.limit ?? 15) || 15));
+    const result = await this.apiClient.getWorkflowStepFailureRate(days, limit);
+    const data = result?.data || result || {};
+    const items: any[] = data.items || [];
+    const totalSteps = data.total_steps ?? 0;
+    const totalFailed = data.total_failed ?? 0;
+    const lines = items.map((it: any) =>
+      `- ${it.step_key}: ${it.failed}/${it.total} 失败率=${it.failure_rate}%`
+    );
+    return this.toToolResponse(
+      `工作流步骤失败率排行(近${days}天, 共${totalSteps}步 ${totalFailed}失败):\n${lines.join('\n') || '无失败数据'}`,
       result,
     );
   }

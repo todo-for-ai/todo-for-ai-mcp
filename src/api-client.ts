@@ -1336,6 +1336,14 @@ export class TodoApiClient {
     }, 'getWorkflowRunDurationPercentiles');
   }
 
+  async getWorkflowStepFailureRate(days = 30, limit = 15): Promise<any> {
+    logger.info(`[API_CLIENT] Getting workflow step failure rate (days=${days}, limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/step-failure-rate', { params: { days, limit } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowStepFailureRate');
+  }
+
   async getWorkflowFailedStepsByDuration(args?: { days?: number; limit?: number }): Promise<any> {
     logger.info('[API_CLIENT] Getting workflow failed steps by duration');
     const params: Record<string, string> = {};
