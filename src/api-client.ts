@@ -2188,6 +2188,14 @@ export class TodoApiClient {
     }, 'getAgentProductivity');
   }
 
+  async getAgentRunResourceUsage(days = 30, limit = 10): Promise<any> {
+    logger.info(`[API_CLIENT] Getting agent run resource usage (days=${days}, limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/run-resource-usage', { params: { days, limit } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentRunResourceUsage');
+  }
+
   async getAgentProductivityTrend(days = 30): Promise<any> {
     logger.info(`[API_CLIENT] Getting agent productivity trend (days=${days})`);
     return this.executeWithRetry(async () => {

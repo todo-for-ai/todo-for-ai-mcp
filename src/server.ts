@@ -2552,6 +2552,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_run_resource_usage',
+          description: 'Agent run resource usage ranking. Per-agent: total runs, total wall-clock hours, average run duration in minutes. Sorted by total hours descending. Reveals which agents consume the most execution time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max agents returned (1-50, default 10)' },
+            },
+          },
+        },
+        {
           name: 'get_agent_productivity_trend',
           description: 'Daily Agent assignment completion trend for the current user. Per-day done and failed TaskAssignment counts within the window, plus totals. Reveals whether throughput is rising or falling over time.',
           inputSchema: {
@@ -4167,6 +4178,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentProductivity(args);
             break;
 
+          case 'get_agent_run_resource_usage':
+            logger.info(`[MCP_SERVER] Executing get_agent_run_resource_usage`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentRunResourceUsage(args);
+            break;
+
           case 'get_agent_productivity_trend':
             logger.info(`[MCP_SERVER] Executing get_agent_productivity_trend`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetAgentProductivityTrend(args);
@@ -4648,6 +4664,7 @@ export class TodoMcpServer {
                 'get_workflow_failure_correlation',
                 'get_workflow_failure_correlation_by_step',
                 'get_agent_productivity',
+                'get_agent_run_resource_usage',
                 'get_agent_productivity_trend',
                 'get_agent_productivity_alerts',
                 'get_agent_productivity_by_kind',
@@ -6237,6 +6254,22 @@ export class TodoMcpServer {
     return this.toToolResponse(
       `Agent 产出效率(近${data.days ?? days}天):\n` +
         `${items.map((a: any) => `- ${a.name}#${a.agent_id}: 分配${a.total} 完成${a.done}(率${a.completion_rate}%) 失败${a.failed} 取消${a.cancelled} 过期${a.expired} 进行中${a.in_progress} 平均完成${a.avg_completion_hours ?? '—'}h`).join('\n') || '无分配'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentRunResourceUsage(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(50, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getAgentRunResourceUsage(days, limit);
+    const data = result?.data || result || {};
+    const items: any[] = data.items || [];
+    const totalRuns = data.total_runs ?? 0;
+    const lines = items.map((it: any) =>
+      `- ${it.name}#${it.agent_id}: ${it.total_runs}次 总${it.total_hours}h 均${it.avg_run_minutes}min`
+    );
+    return this.toToolResponse(
+      `Agent 运行资源排行(近${days}天, 共${totalRuns}次):\n${lines.join('\n') || '无运行数据'}`,
       result,
     );
   }
