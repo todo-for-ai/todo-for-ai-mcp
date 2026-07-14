@@ -1373,6 +1373,17 @@ export class TodoApiClient {
     }, 'getWorkflowRunTrend');
   }
 
+  async getWorkflowSuccessRateByWorkflow(args?: { days?: number; limit?: number }): Promise<any> {
+    logger.info('[API_CLIENT] Getting workflow success rate by workflow');
+    const params: Record<string, string> = {};
+    if (args?.days) params.days = String(args.days);
+    if (args?.limit) params.limit = String(args.limit);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/success-rate-by-workflow', { params });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowSuccessRateByWorkflow');
+  }
+
   /**
    * Get a single workflow run.
    */

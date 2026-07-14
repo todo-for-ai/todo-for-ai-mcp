@@ -1378,6 +1378,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_success_rate_by_workflow',
+          description: 'Per-workflow run success rate comparison over the last N days (default 30). Returns top workflows by total finished runs with succeeded/failed/cancelled counts, success_rate, and avg_duration. Reveals which workflows are most/least reliable.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max workflows to return (1-20, default 10)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_run',
           description: 'Get a single workflow run with step details.',
           inputSchema: {
@@ -3837,6 +3848,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowRunTrend(args);
             break;
 
+          case 'get_workflow_success_rate_by_workflow':
+            logger.info(`[MCP_SERVER] Executing get_workflow_success_rate_by_workflow`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowSuccessRateByWorkflow(args);
+            break;
+
           case 'get_workflow_run':
             logger.info(`[MCP_SERVER] Executing get_workflow_run`, { requestId, instanceId: this.instanceId, runId: args?.run_id });
             result = await this.handleGetWorkflowRun(args);
@@ -4705,6 +4721,7 @@ export class TodoMcpServer {
                 'get_workflow_step_cofailure_matrix',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
+                'get_workflow_success_rate_by_workflow',
                 'get_workflow_run',
                 'get_workflow_run_console',
                 'cancel_workflow_run',
@@ -5448,6 +5465,19 @@ export class TodoMcpServer {
       .join('\n');
     return this.toToolResponse(
       `工作流运行趋势 (近 ${d?.days || 30} 天): 累计成功 ${d?.total_succeeded || 0}, 累计失败 ${d?.total_failed || 0}, 累计失败步骤 ${d?.total_failed_steps || 0}\n${recent || '暂无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowSuccessRateByWorkflow(args: any) {
+    const result = await this.apiClient.getWorkflowSuccessRateByWorkflow(args);
+    const d = result?.data || result;
+    const wfs = Array.isArray(d?.workflows) ? d.workflows : [];
+    const lines = wfs.map((w: any) =>
+      `• ${w.name}: ${w.succeeded}/${w.total} 成功 (${w.success_rate}%), 平均耗时 ${w.avg_duration}s`
+    ).join('\n');
+    return this.toToolResponse(
+      `工作流成功率对比 (近 ${d?.days || 30} 天, Top ${wfs.length}):\n${lines || '暂无数据'}`,
       result,
     );
   }
