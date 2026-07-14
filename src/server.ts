@@ -1368,6 +1368,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_step_hourly_distribution',
+          description: 'Step execution hour-of-day distribution. Groups WorkflowStepRun by (step_key, hour) based on started_at. Returns per-step hourly distribution and business-hours ratio. Reveals which steps run during business hours vs overnight.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max step keys returned (1-20, default 10)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -3896,6 +3907,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowStepRetryTopology(args);
             break;
 
+          case 'get_workflow_step_hourly_distribution':
+            logger.info(`[MCP_SERVER] Executing get_workflow_step_hourly_distribution`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowStepHourlyDistribution(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4798,6 +4814,7 @@ export class TodoMcpServer {
                 'get_workflow_step_failure_rate',
                 'get_workflow_step_cofailure_matrix',
                 'get_workflow_step_retry_topology',
+                'get_workflow_step_hourly_distribution',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_success_rate_by_workflow',
@@ -5536,6 +5553,22 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `步骤重试拓扑(近${data.days ?? days}天, 共${totalRetries}次重试):\n${lines.join('\n') || '无重试数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowStepHourlyDistribution(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getWorkflowStepHourlyDistribution(days, limit);
+    const data = result?.data || result || {};
+    const steps: any[] = data.steps || [];
+    const lines = steps.map((s: any) => {
+      const peak = s.peak_hour != null ? `峰值${s.peak_hour}时` : '';
+      return `- ${s.step_key}: ${s.total}次 ${peak} 工时占比${s.business_hours_ratio}%`;
+    });
+    return this.toToolResponse(
+      `步骤执行时段分布(近${data.days ?? days}天):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }
