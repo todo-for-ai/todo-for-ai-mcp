@@ -2516,6 +2516,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_task_completion_rate_by_project',
+          description: 'Task completion rate snapshot comparison across projects. Groups tasks by project with total/done/in_progress/cancelled/completion_rate. Reveals which projects have the best/worst delivery rates.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max projects returned (1-30, default 10)' },
+            },
+          },
+        },
+        {
           name: 'get_task_completion_by_project',
           description: 'Daily task completion trend grouped by project. Buckets done tasks by calendar day of completed_at and project_id, returning per-project daily series plus totals (top N by total completed). Reveals which projects are actively delivering over time.',
           inputSchema: {
@@ -4182,6 +4193,11 @@ export class TodoMcpServer {
             result = await this.handleGetTaskCompletionByPriority(args);
             break;
 
+          case 'get_task_completion_rate_by_project':
+            logger.info(`[MCP_SERVER] Executing get_task_completion_rate_by_project`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskCompletionRateByProject(args);
+            break;
+
           case 'get_task_completion_by_project':
             logger.info(`[MCP_SERVER] Executing get_task_completion_by_project`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskCompletionByProject(args);
@@ -4690,6 +4706,7 @@ export class TodoMcpServer {
                 'get_task_overdue_trend',
                 'get_task_overdue_by_assignee',
                 'get_task_completion_by_priority',
+                'get_task_completion_rate_by_project',
                 'get_task_completion_by_project',
                 'get_task_completion_by_assignee',
                 'get_workflow_failure_correlation',
@@ -6242,6 +6259,23 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `任务完成率按优先级(近${days}天, 共${total}任务):\n${lines.join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskCompletionRateByProject(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(30, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getTaskCompletionRateByProject(days, limit);
+    const data = result?.data || result || {};
+    const projects: any[] = data.projects || [];
+    const totalTasks = data.total_tasks ?? 0;
+    const totalDone = data.total_done ?? 0;
+    const lines = projects.map((p: any) =>
+      `- ${p.name}: 总${p.total} 完成=${p.done} 进行=${p.in_progress} 取消=${p.cancelled} 完成率=${p.completion_rate}%`
+    );
+    return this.toToolResponse(
+      `任务完成率按项目(近${days}天, 共${totalTasks}任务 ${totalDone}完成):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }
