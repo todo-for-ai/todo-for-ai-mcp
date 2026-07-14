@@ -2449,6 +2449,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_task_overdue_by_assignee',
+          description: 'Overdue task count grouped by assignee (Agent). Per agent: overdue count, by-priority breakdown, earliest overdue due_date. Sorted by overdue count descending. Reveals which agents bear the heaviest overdue burden.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max agents returned (1-20, default 10)' },
+            },
+          },
+        },
+        {
           name: 'get_task_completion_by_project',
           description: 'Daily task completion trend grouped by project. Buckets done tasks by calendar day of completed_at and project_id, returning per-project daily series plus totals (top N by total completed). Reveals which projects are actively delivering over time.',
           inputSchema: {
@@ -4069,6 +4079,11 @@ export class TodoMcpServer {
             result = await this.handleGetTaskOverdueTrend(args);
             break;
 
+          case 'get_task_overdue_by_assignee':
+            logger.info(`[MCP_SERVER] Executing get_task_overdue_by_assignee`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskOverdueByAssignee(args);
+            break;
+
           case 'get_task_completion_by_project':
             logger.info(`[MCP_SERVER] Executing get_task_completion_by_project`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskCompletionByProject(args);
@@ -4565,6 +4580,7 @@ export class TodoMcpServer {
                 'get_experiences_decay_by_domain',
                 'get_task_stats',
                 'get_task_overdue_trend',
+                'get_task_overdue_by_assignee',
                 'get_task_completion_by_project',
                 'get_task_completion_by_assignee',
                 'get_workflow_failure_correlation',
@@ -6010,6 +6026,22 @@ export class TodoMcpServer {
       `任务逾期趋势(近${data.days ?? days}天, 按due_date分日, 共${data.total_overdue ?? 0}个逾期):\n` +
       `${priorityEntries.length ? `按优先级累计: ${priorityEntries.map(([k, v]: any) => `${k}=${v}`).join(', ')}\n` : ''}` +
       `${trend.map((b: any) => `${b.date}: 逾期${b.overdue}${Object.keys(b.by_priority || {}).length ? ` [${Object.entries(b.by_priority).map(([k, v]: any) => `${k}=${v}`).join(',')}]` : ''}`).join('\n') || '无逾期数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskOverdueByAssignee(args: any) {
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getTaskOverdueByAssignee(limit);
+    const data = result?.data || result || {};
+    const items: any[] = data.items || [];
+    const totalOverdue = data.total_overdue ?? 0;
+    const lines = items.map((it: any) => {
+      const priorities = Object.entries(it.by_priority || {}).map(([k, v]: any) => `${k}=${v}`).join(', ');
+      return `- ${it.name}#${it.agent_id}: 逾期${it.overdue} [${priorities}] 最早到期=${it.earliest_due || '?'}`;
+    });
+    return this.toToolResponse(
+      `任务逾期按负责人(共${totalOverdue}个逾期, top${items.length}):\n${lines.join('\n') || '无逾期分配'}`,
       result,
     );
   }
