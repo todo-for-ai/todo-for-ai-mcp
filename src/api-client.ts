@@ -2201,6 +2201,14 @@ export class TodoApiClient {
     }, 'getTaskPriorityTrend');
   }
 
+  async getTaskCompletionForecast(days = 30): Promise<any> {
+    logger.info(`[API_CLIENT] Getting task completion forecast (days=${days})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('tasks/completion-forecast', { params: { days } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getTaskCompletionForecast');
+  }
+
   async getTaskCompletionByProject(days = 30, limit = 8): Promise<any> {
     logger.info(`[API_CLIENT] Getting task completion by project (days=${days}, limit=${limit})`);
     return this.executeWithRetry(async () => {

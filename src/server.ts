@@ -2611,6 +2611,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_task_completion_forecast',
+          description: 'Task completion forecast based on historical velocity. Computes daily done-task velocity over the lookback window, extrapolates to estimate when remaining tasks will be completed, with per-priority breakdown.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Velocity lookback window in days (7-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_task_completion_by_project',
           description: 'Daily task completion trend grouped by project. Buckets done tasks by calendar day of completed_at and project_id, returning per-project daily series plus totals (top N by total completed). Reveals which projects are actively delivering over time.',
           inputSchema: {
@@ -4343,6 +4353,11 @@ export class TodoMcpServer {
             result = await this.handleGetTaskPriorityTrend(args);
             break;
 
+          case 'get_task_completion_forecast':
+            logger.info(`[MCP_SERVER] Executing get_task_completion_forecast`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskCompletionForecast(args);
+            break;
+
           case 'get_task_completion_by_project':
             logger.info(`[MCP_SERVER] Executing get_task_completion_by_project`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskCompletionByProject(args);
@@ -4870,6 +4885,7 @@ export class TodoMcpServer {
                 'get_task_completion_by_priority',
                 'get_task_completion_rate_by_project',
                 'get_task_priority_trend',
+                'get_task_completion_forecast',
                 'get_task_completion_by_project',
                 'get_task_completion_by_assignee',
                 'get_workflow_failure_correlation',
@@ -6582,6 +6598,25 @@ export class TodoMcpServer {
     ).join('\n');
     return this.toToolResponse(
       `任务优先级分布趋势(近${data.days ?? days}天): 累计 紧急${totals.critical ?? 0} 高${totals.high ?? 0} 中${totals.medium ?? 0} 低${totals.low ?? 0}\n${recent || '暂无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskCompletionForecast(args: any) {
+    const days = Math.max(7, Math.min(365, Number(args?.days ?? 30) || 30));
+    const result = await this.apiClient.getTaskCompletionForecast(days);
+    const data = result?.data || result || {};
+    const velocity = data.velocity ?? 0;
+    const totalDone = data.total_done_in_window ?? 0;
+    const totalRemaining = data.total_remaining ?? 0;
+    const daysToComplete = data.days_to_complete;
+    const estDate = data.estimated_completion_date;
+    const priForecast: any[] = data.priority_forecast || [];
+    const priLines = priForecast.map((p: any) =>
+      `- ${p.priority}: 剩余${p.remaining} 预计${p.estimated_days}天(${p.estimated_date || '—'})`
+    ).join('\n');
+    return this.toToolResponse(
+      `任务完成预测(近${data.days ?? days}天速度${velocity}任务/天, 已完成${totalDone}): 剩余${totalRemaining} 预计${daysToComplete ?? '—'}天(${estDate || '—'})\n${priLines || '无剩余任务'}`,
       result,
     );
   }
