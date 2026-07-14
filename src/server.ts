@@ -1357,6 +1357,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_step_retry_topology',
+          description: 'Step retry topology. Groups WorkflowStepRun by step_key, counting retries (attempt>1), first-attempt success rate, and retry success rate. Reveals whether retries actually recover failures and which steps are most retried.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max step keys returned (1-30, default 15)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -3870,6 +3881,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowStepCofailureMatrix(args);
             break;
 
+          case 'get_workflow_step_retry_topology':
+            logger.info(`[MCP_SERVER] Executing get_workflow_step_retry_topology`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowStepRetryTopology(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4766,6 +4782,7 @@ export class TodoMcpServer {
                 'get_workflow_run_duration_percentiles',
                 'get_workflow_step_failure_rate',
                 'get_workflow_step_cofailure_matrix',
+                'get_workflow_step_retry_topology',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_success_rate_by_workflow',
@@ -5487,6 +5504,22 @@ export class TodoMcpServer {
     }
     return this.toToolResponse(
       `步骤共失败矩阵(近${days}天, ${totalMulti}次多步失败, 最大共现=${maxCo}):\n${lines.join('\n') || '无共失败数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowStepRetryTopology(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(30, Number(args?.limit ?? 15) || 15));
+    const result = await this.apiClient.getWorkflowStepRetryTopology(days, limit);
+    const data = result?.data || result || {};
+    const steps: any[] = data.steps || [];
+    const totalRetries = data.total_retries ?? 0;
+    const lines = steps.map((s: any) =>
+      `- ${s.step_key}: ${s.retries}次重试(率${s.retry_rate}%) 首次成功${s.first_attempt_success_rate}% 重试成功${s.retry_success_rate}%`
+    );
+    return this.toToolResponse(
+      `步骤重试拓扑(近${data.days ?? days}天, 共${totalRetries}次重试):\n${lines.join('\n') || '无重试数据'}`,
       result,
     );
   }

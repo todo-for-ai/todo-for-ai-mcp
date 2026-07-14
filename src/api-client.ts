@@ -1352,6 +1352,14 @@ export class TodoApiClient {
     }, 'getWorkflowStepCofailureMatrix');
   }
 
+  async getWorkflowStepRetryTopology(days = 30, limit = 15): Promise<any> {
+    logger.info(`[API_CLIENT] Getting workflow step retry topology (days=${days}, limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/step-retry-topology', { params: { days, limit } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowStepRetryTopology');
+  }
+
   async getWorkflowFailedStepsByDuration(args?: { days?: number; limit?: number }): Promise<any> {
     logger.info('[API_CLIENT] Getting workflow failed steps by duration');
     const params: Record<string, string> = {};
