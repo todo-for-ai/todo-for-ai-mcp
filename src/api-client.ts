@@ -2250,6 +2250,14 @@ export class TodoApiClient {
     }, 'getAgentProductivityHourlyHeatmap');
   }
 
+  async getAgentProductivityWeeklyComparison(limit = 10): Promise<any> {
+    logger.info(`[API_CLIENT] Getting agent productivity weekly comparison (limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/productivity/weekly-comparison', { params: { limit } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentProductivityWeeklyComparison');
+  }
+
   async getAgentFailureReasons(days = 30, limit = 15): Promise<any> {
     logger.info(`[API_CLIENT] Getting agent failure reasons (days=${days}, limit=${limit})`);
     return this.executeWithRetry(async () => {

@@ -2637,6 +2637,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_productivity_weekly_comparison',
+          description: 'Week-over-week Agent productivity comparison. Returns per-agent done counts for current week vs previous week with change percentage. Reveals which agents are ramping up or slowing down.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max agents returned (1-30, default 10)' },
+            },
+          },
+        },
+        {
           name: 'get_agent_failure_reasons',
           description: 'Distribution of Agent run failure reasons. Buckets FAILED AgentRun rows by a normalized error type (first line of the error text, lowercased, truncated to 80 chars). Returns per-reason counts and affected agent names, sorted by count. Surfaces the most common failure causes across the fleet.',
           inputSchema: {
@@ -4248,6 +4258,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentProductivityHourlyHeatmap(args);
             break;
 
+          case 'get_agent_productivity_weekly_comparison':
+            logger.info(`[MCP_SERVER] Executing get_agent_productivity_weekly_comparison`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentProductivityWeeklyComparison(args);
+            break;
+
           case 'get_agent_failure_reasons':
             logger.info(`[MCP_SERVER] Executing get_agent_failure_reasons`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetAgentFailureReasons(args);
@@ -4717,6 +4732,7 @@ export class TodoMcpServer {
                 'get_agent_productivity_alerts',
                 'get_agent_productivity_by_kind',
                 'get_agent_productivity_hourly_heatmap',
+                'get_agent_productivity_weekly_comparison',
                 'get_agent_failure_reasons',
                 'get_conflicts_sandbox_correlation',
                 'get_agent_health',
@@ -6436,6 +6452,23 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `Agent 小时维度产出热力(近${data.days ?? days}天, 共${agents.length}个Agent${peakHour != null ? `, 全队峰值${peakHour}时` : ''}):\n${lines.join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentProductivityWeeklyComparison(args: any) {
+    const limit = Math.max(1, Math.min(30, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getAgentProductivityWeeklyComparison(limit);
+    const data = result?.data || result || {};
+    const agents: any[] = data.agents || [];
+    const totalThis = data.total_this_week ?? 0;
+    const totalLast = data.total_last_week ?? 0;
+    const lines = agents.map((a: any) => {
+      const arrow = a.change_pct > 0 ? '↑' : a.change_pct < 0 ? '↓' : '→';
+      return `- ${a.name}: 本周${a.this_week} 上周${a.last_week} ${arrow}${Math.abs(a.change_pct)}%`;
+    });
+    return this.toToolResponse(
+      `Agent 产出周间对比(本周共${totalThis} 上周共${totalLast}):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }
