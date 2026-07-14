@@ -2150,6 +2150,14 @@ export class TodoApiClient {
     }, 'getTaskOverdueByAssignee');
   }
 
+  async getTaskOverdueClustering(limit = 15): Promise<any> {
+    logger.info(`[API_CLIENT] Getting task overdue clustering (limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('tasks/overdue-clustering', { params: { limit } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getTaskOverdueClustering');
+  }
+
   async getTaskCompletionByPriority(days = 30): Promise<any> {
     logger.info(`[API_CLIENT] Getting task completion by priority (days=${days})`);
     return this.executeWithRetry(async () => {

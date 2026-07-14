@@ -2527,6 +2527,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_task_overdue_clustering',
+          description: 'Overdue task clustering analysis by project and priority. Per cluster: project name, priority, count, avg days overdue, representative task titles. Reveals where overdue tasks concentrate and why.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max clusters returned (1-30, default 15)' },
+            },
+          },
+        },
+        {
           name: 'get_task_completion_by_priority',
           description: 'Task completion rate by priority. Groups tasks by priority with total/done/cancelled/completion_rate. Reveals whether high-priority tasks are delivered at a comparable rate to low-priority ones.',
           inputSchema: {
@@ -4229,6 +4239,11 @@ export class TodoMcpServer {
             result = await this.handleGetTaskOverdueByAssignee(args);
             break;
 
+          case 'get_task_overdue_clustering':
+            logger.info(`[MCP_SERVER] Executing get_task_overdue_clustering`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskOverdueClustering(args);
+            break;
+
           case 'get_task_completion_by_priority':
             logger.info(`[MCP_SERVER] Executing get_task_completion_by_priority`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskCompletionByPriority(args);
@@ -4753,6 +4768,7 @@ export class TodoMcpServer {
                 'get_task_stats',
                 'get_task_overdue_trend',
                 'get_task_overdue_by_assignee',
+                'get_task_overdue_clustering',
                 'get_task_completion_by_priority',
                 'get_task_completion_rate_by_project',
                 'get_task_completion_by_project',
@@ -6339,6 +6355,21 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `任务逾期按负责人(共${totalOverdue}个逾期, top${items.length}):\n${lines.join('\n') || '无逾期分配'}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskOverdueClustering(args: any) {
+    const limit = Math.max(1, Math.min(30, Number(args?.limit ?? 15) || 15));
+    const result = await this.apiClient.getTaskOverdueClustering(limit);
+    const data = result?.data || result || {};
+    const clusters: any[] = data.clusters || [];
+    const totalOverdue = data.total_overdue ?? 0;
+    const lines = clusters.map((c: any) =>
+      `- ${c.project_name}/${c.priority}: ${c.count}个逾期 均${c.avg_days_overdue}天超期 ${c.titles?.join('; ') || ''}`
+    );
+    return this.toToolResponse(
+      `任务逾期聚类分析(共${totalOverdue}个逾期, top${clusters.length}簇):\n${lines.join('\n') || '无逾期'}`,
       result,
     );
   }
