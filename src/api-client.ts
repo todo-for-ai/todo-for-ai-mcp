@@ -2296,6 +2296,16 @@ export class TodoApiClient {
     }, 'getExperiencesDecayByDomain');
   }
 
+  async getExperiencesDecayByTaskType(limit = 15): Promise<any> {
+    logger.info(`[API_CLIENT] Getting experiences decay by task type (limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/experiences/decay-by-task-type', {
+        params: { limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getExperiencesDecayByTaskType');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {

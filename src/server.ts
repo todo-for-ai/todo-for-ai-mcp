@@ -2434,6 +2434,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_experiences_decay_by_task_type',
+          description: 'Per-task-type decay comparison for the user valid experiences. Same as decay-by-domain but grouped by task_type. Reveals which task categories have the most stale / low-confidence entries.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max task types returned (1-50, default 15)' },
+            },
+          },
+        },
+        {
           name: 'get_task_stats',
           description: 'Aggregate task lifecycle stats for the current user projects: total, by_status, by_priority, completion/cancellation rates, average lifecycle duration (hours) for done tasks, lifecycle duration buckets (0-1h ... >7d), average completion rate. Reveals throughput bottlenecks and abandonment.',
           inputSchema: { type: 'object', properties: {} },
@@ -4069,6 +4079,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesDecayByDomain(args);
             break;
 
+          case 'get_experiences_decay_by_task_type':
+            logger.info(`[MCP_SERVER] Executing get_experiences_decay_by_task_type`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesDecayByTaskType(args);
+            break;
+
           case 'get_task_stats':
             logger.info(`[MCP_SERVER] Executing get_task_stats`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskStats(args);
@@ -4578,6 +4593,7 @@ export class TodoMcpServer {
                 'get_experiences_scatter',
                 'get_experiences_reuse_trend',
                 'get_experiences_decay_by_domain',
+                'get_experiences_decay_by_task_type',
                 'get_task_stats',
                 'get_task_overdue_trend',
                 'get_task_overdue_by_assignee',
@@ -5987,6 +6003,22 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `经验按域衰减对比(共${domains.length}域, 活跃=${totalActive} 衰减=${totalDecayed}):\n${lines.join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetExperiencesDecayByTaskType(args: any) {
+    const limit = Math.max(1, Math.min(50, Number(args?.limit ?? 15) || 15));
+    const result = await this.apiClient.getExperiencesDecayByTaskType(limit);
+    const data = result?.data || result || {};
+    const taskTypes: any[] = data.task_types || [];
+    const totalActive = data.total_active ?? 0;
+    const totalDecayed = data.total_decayed ?? 0;
+    const lines = taskTypes.map((t: any) =>
+      `- ${t.task_type}: 总${t.total} 活跃=${t.active} 衰减=${t.decayed} 平均置信度=${t.avg_confidence} 复用=${t.reuses}`,
+    );
+    return this.toToolResponse(
+      `经验按任务类型衰减对比(共${taskTypes.length}类型, 活跃=${totalActive} 衰减=${totalDecayed}):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }
