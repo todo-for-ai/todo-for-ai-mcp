@@ -2689,6 +2689,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_productivity_calendar_heatmap',
+          description: 'Date × Agent completion calendar heatmap. Buckets done assignments by calendar date (YYYY-MM-DD) and agent_id over the last N days. Returns a {agent_id: {date: count}} matrix, per-agent totals, and date_range. Ideal for GitHub-style contribution calendars per agent.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 90)' },
+              limit: { type: 'integer', description: 'Max agents returned (1-20, default 10)' },
+            },
+          },
+        },
+        {
           name: 'get_agent_productivity_weekly_comparison',
           description: 'Week-over-week Agent productivity comparison. Returns per-agent done counts for current week vs previous week with change percentage. Reveals which agents are ramping up or slowing down.',
           inputSchema: {
@@ -4335,6 +4346,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentProductivityHourlyHeatmap(args);
             break;
 
+          case 'get_agent_productivity_calendar_heatmap':
+            logger.info(`[MCP_SERVER] Executing get_agent_productivity_calendar_heatmap`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentProductivityCalendarHeatmap(args);
+            break;
+
           case 'get_agent_productivity_weekly_comparison':
             logger.info(`[MCP_SERVER] Executing get_agent_productivity_weekly_comparison`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetAgentProductivityWeeklyComparison(args);
@@ -4814,6 +4830,7 @@ export class TodoMcpServer {
                 'get_agent_productivity_alerts',
                 'get_agent_productivity_by_kind',
                 'get_agent_productivity_hourly_heatmap',
+                'get_agent_productivity_calendar_heatmap',
                 'get_agent_productivity_weekly_comparison',
                 'get_agent_failure_reasons',
                 'get_conflicts_sandbox_correlation',
@@ -6627,6 +6644,26 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `Agent 小时维度产出热力(近${data.days ?? days}天, 共${agents.length}个Agent${peakHour != null ? `, 全队峰值${peakHour}时` : ''}):\n${lines.join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentProductivityCalendarHeatmap(args: any) {
+    const days = args?.days ?? 90;
+    const limit = args?.limit ?? 10;
+    const result = await this.apiClient.getAgentProductivityCalendarHeatmap(days, limit);
+    const data = result?.data || result || {};
+    const agents: any[] = data.agents || [];
+    const matrix: any = data.matrix || {};
+    const lines = agents.map((a: any) => {
+      const row = matrix[String(a.agent_id)] || {};
+      const dates = Object.entries(row) as [string, number][];
+      const topDates = dates.sort((x, y) => y[1] - x[1]).slice(0, 3)
+        .map(([d, c]) => `${d}=${c}`).join(' ');
+      return `- ${a.name}#${a.agent_id} (完成${a.done}): ${topDates || '无'}`;
+    });
+    return this.toToolResponse(
+      `Agent 日历产出热力(近${data.days ?? days}天, 共${agents.length}个Agent):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }
