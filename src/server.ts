@@ -1390,6 +1390,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_capability_gap_analysis',
+          description: 'Agent capability gap analysis. Compares each agent\'s declared capabilities against actual experience domains. Identifies gaps (unclaimed expertise) and overclaims (unsupported capabilities) with coverage scores.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max agents returned (1-20, default 10)' },
+              min_confidence: { type: 'number', description: 'Minimum experience confidence threshold (0.0-1.0, default 0.5)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -3950,6 +3961,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowStepDependencyBottleneck(args);
             break;
 
+          case 'get_agent_capability_gap_analysis':
+            logger.info(`[MCP_SERVER] Executing get_agent_capability_gap_analysis`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentCapabilityGapAnalysis(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4864,6 +4880,7 @@ export class TodoMcpServer {
                 'get_workflow_step_retry_topology',
                 'get_workflow_step_hourly_distribution',
                 'get_workflow_step_dependency_bottleneck',
+                'get_agent_capability_gap_analysis',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_success_rate_by_workflow',
@@ -5638,6 +5655,23 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `工作流步骤依赖瓶颈分析(近${days}天):\n${lines.join('\n') || '无依赖数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentCapabilityGapAnalysis(args: any) {
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const minConfidence = Math.max(0, Math.min(1, Number(args?.min_confidence ?? 0.5) || 0.5));
+    const result = await this.apiClient.getAgentCapabilityGapAnalysis(limit, minConfidence);
+    const data = result?.data || result || {};
+    const agents: any[] = data.agents || [];
+    const lines = agents.map((a: any) => {
+      const gaps = (a.gaps || []).map((g: any) => `${g.domain}(${g.success_count}次成功)`);
+      const overclaims = (a.overclaims || []).map((o: any) => `${o.capability}(风险${o.risk})`);
+      return `- ${a.agent_name}: 覆盖率${a.coverage_score}% 缺口[${gaps.join(', ') || '无'}] 过度声明[${overclaims.join(', ') || '无'}]`;
+    });
+    return this.toToolResponse(
+      `Agent能力缺口分析:\n${lines.join('\n') || '无缺口数据'}`,
       result,
     );
   }

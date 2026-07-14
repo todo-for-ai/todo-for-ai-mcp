@@ -1376,6 +1376,14 @@ export class TodoApiClient {
     }, 'getWorkflowStepDependencyBottleneck');
   }
 
+  async getAgentCapabilityGapAnalysis(limit = 10, minConfidence = 0.5): Promise<any> {
+    logger.info(`[API_CLIENT] Getting agent capability gap analysis (limit=${limit}, min_confidence=${minConfidence})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/capability-gap-analysis', { params: { limit, min_confidence: minConfidence } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentCapabilityGapAnalysis');
+  }
+
   async getWorkflowFailedStepsByDuration(args?: { days?: number; limit?: number }): Promise<any> {
     logger.info('[API_CLIENT] Getting workflow failed steps by duration');
     const params: Record<string, string> = {};
