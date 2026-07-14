@@ -1379,6 +1379,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_step_dependency_bottleneck',
+          description: 'Workflow step dependency bottleneck analysis. Computes DAG critical path (longest duration path) per workflow, identifies bottleneck steps by their share of total critical path time. Reveals which steps dominate workflow execution time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max workflows returned (1-20, default 10)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -3934,6 +3945,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowStepHourlyDistribution(args);
             break;
 
+          case 'get_workflow_step_dependency_bottleneck':
+            logger.info(`[MCP_SERVER] Executing get_workflow_step_dependency_bottleneck`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowStepDependencyBottleneck(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4847,6 +4863,7 @@ export class TodoMcpServer {
                 'get_workflow_step_cofailure_matrix',
                 'get_workflow_step_retry_topology',
                 'get_workflow_step_hourly_distribution',
+                'get_workflow_step_dependency_bottleneck',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_success_rate_by_workflow',
@@ -5603,6 +5620,24 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `步骤执行时段分布(近${data.days ?? days}天):\n${lines.join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowStepDependencyBottleneck(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getWorkflowStepDependencyBottleneck(days, limit);
+    const data = result?.data || result || {};
+    const workflows: any[] = data.workflows || [];
+    const lines = workflows.map((wf: any) => {
+      const cp = (wf.critical_path || []).map((s: any) =>
+        `${s.step_key}(${s.avg_duration}s, 瓶颈${s.bottleneck_score}%)`
+      ).join(' → ');
+      return `- ${wf.workflow_name}: 关键路径耗时${wf.critical_path_duration}s [${cp}]`;
+    });
+    return this.toToolResponse(
+      `工作流步骤依赖瓶颈分析(近${days}天):\n${lines.join('\n') || '无依赖数据'}`,
       result,
     );
   }
