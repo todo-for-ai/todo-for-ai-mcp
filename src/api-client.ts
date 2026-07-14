@@ -2431,6 +2431,14 @@ export class TodoApiClient {
     }, 'getExperiencesPropagationChain');
   }
 
+  async getExperiencesSkillCoverageRadar(limit = 6, domains = 8): Promise<any> {
+    logger.info(`[API_CLIENT] Getting experiences skill coverage radar (limit=${limit}, domains=${domains})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/experiences/skill-coverage-radar', { params: { limit, domains } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getExperiencesSkillCoverageRadar');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {

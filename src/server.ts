@@ -2523,6 +2523,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_experiences_skill_coverage_radar',
+          description: 'Per-Agent skill coverage radar across experience domains. Returns top N domains and per-agent normalized scores (0-100) for radar/spider chart rendering. Reveals skill gaps and specialization patterns across the agent fleet.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max agents returned (1-20, default 6)' },
+              domains: { type: 'integer', description: 'Max domain axes (3-12, default 8)' },
+            },
+          },
+        },
+        {
           name: 'get_task_stats',
           description: 'Aggregate task lifecycle stats for the current user projects: total, by_status, by_priority, completion/cancellation rates, average lifecycle duration (hours) for done tasks, lifecycle duration buckets (0-1h ... >7d), average completion rate. Reveals throughput bottlenecks and abandonment.',
           inputSchema: { type: 'object', properties: {} },
@@ -4276,6 +4287,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesPropagationChain(args);
             break;
 
+          case 'get_experiences_skill_coverage_radar':
+            logger.info(`[MCP_SERVER] Executing get_experiences_skill_coverage_radar`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesSkillCoverageRadar(args);
+            break;
+
           case 'get_task_stats':
             logger.info(`[MCP_SERVER] Executing get_task_stats`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskStats(args);
@@ -4829,6 +4845,7 @@ export class TodoMcpServer {
                 'get_experiences_confidence_distribution',
                 'get_experiences_source_distribution',
                 'get_experiences_propagation_chain',
+                'get_experiences_skill_coverage_radar',
                 'get_task_stats',
                 'get_task_overdue_trend',
                 'get_task_overdue_by_assignee',
@@ -6398,6 +6415,23 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `经验共享传播链(共${totalShared}条共享 ${totalPropagated}次传播):\n${lines.join('\n') || '无共享经验'}`,
+      result,
+    );
+  }
+
+  private async handleGetExperiencesSkillCoverageRadar(args: any) {
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 6) || 6));
+    const domains = Math.max(3, Math.min(12, Number(args?.domains ?? 8) || 8));
+    const result = await this.apiClient.getExperiencesSkillCoverageRadar(limit, domains);
+    const data = result?.data || result || {};
+    const agents: any[] = data.agents || [];
+    const labels: string[] = data.domain_labels || [];
+    const lines = agents.map((a: any) => {
+      const pairs = labels.map((l: string, i: number) => `${l}=${a.scores?.[i] ?? 0}`);
+      return `- ${a.name}: ${pairs.join(' ')} (共${a.total_experiences}条)`;
+    });
+    return this.toToolResponse(
+      `Agent 技能覆盖雷达(维度: ${labels.join('/')}):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }
