@@ -2579,6 +2579,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_task_priority_trend',
+          description: 'Daily task priority distribution trend. Groups tasks by created_at date and priority level (critical/high/medium/low) over the last N days. Reveals how the task priority mix shifts over time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_task_completion_by_project',
           description: 'Daily task completion trend grouped by project. Buckets done tasks by calendar day of completed_at and project_id, returning per-project daily series plus totals (top N by total completed). Reveals which projects are actively delivering over time.',
           inputSchema: {
@@ -4296,6 +4306,11 @@ export class TodoMcpServer {
             result = await this.handleGetTaskCompletionRateByProject(args);
             break;
 
+          case 'get_task_priority_trend':
+            logger.info(`[MCP_SERVER] Executing get_task_priority_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskPriorityTrend(args);
+            break;
+
           case 'get_task_completion_by_project':
             logger.info(`[MCP_SERVER] Executing get_task_completion_by_project`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskCompletionByProject(args);
@@ -4820,6 +4835,7 @@ export class TodoMcpServer {
                 'get_task_overdue_clustering',
                 'get_task_completion_by_priority',
                 'get_task_completion_rate_by_project',
+                'get_task_priority_trend',
                 'get_task_completion_by_project',
                 'get_task_completion_by_assignee',
                 'get_workflow_failure_correlation',
@@ -6484,6 +6500,21 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `任务完成率按项目(近${days}天, 共${totalTasks}任务 ${totalDone}完成):\n${lines.join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskPriorityTrend(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const result = await this.apiClient.getTaskPriorityTrend(days);
+    const data = result?.data || result || {};
+    const trend: any[] = data.trend || [];
+    const totals = data.totals || {};
+    const recent = trend.slice(-7).map((t: any) =>
+      `• ${t.date}: 紧急${t.critical} 高${t.high} 中${t.medium} 低${t.low}`
+    ).join('\n');
+    return this.toToolResponse(
+      `任务优先级分布趋势(近${data.days ?? days}天): 累计 紧急${totals.critical ?? 0} 高${totals.high ?? 0} 中${totals.medium ?? 0} 低${totals.low ?? 0}\n${recent || '暂无数据'}`,
       result,
     );
   }

@@ -2185,6 +2185,14 @@ export class TodoApiClient {
     }, 'getTaskCompletionRateByProject');
   }
 
+  async getTaskPriorityTrend(days = 30): Promise<any> {
+    logger.info(`[API_CLIENT] Getting task priority trend (days=${days})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('tasks/priority-trend', { params: { days } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getTaskPriorityTrend');
+  }
+
   async getTaskCompletionByProject(days = 30, limit = 8): Promise<any> {
     logger.info(`[API_CLIENT] Getting task completion by project (days=${days}, limit=${limit})`);
     return this.executeWithRetry(async () => {
