@@ -1344,6 +1344,14 @@ export class TodoApiClient {
     }, 'getWorkflowStepFailureRate');
   }
 
+  async getWorkflowStepCofailureMatrix(days = 30, limit = 8): Promise<any> {
+    logger.info(`[API_CLIENT] Getting workflow step co-failure matrix (days=${days}, limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/step-cofailure-matrix', { params: { days, limit } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowStepCofailureMatrix');
+  }
+
   async getWorkflowFailedStepsByDuration(args?: { days?: number; limit?: number }): Promise<any> {
     logger.info('[API_CLIENT] Getting workflow failed steps by duration');
     const params: Record<string, string> = {};

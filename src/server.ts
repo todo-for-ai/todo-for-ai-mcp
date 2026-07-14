@@ -1346,6 +1346,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_step_cofailure_matrix',
+          description: 'Step-key co-failure matrix. For each failed workflow run, collects failed step_keys. Builds a symmetric co-occurrence matrix showing which steps tend to fail together, indicating shared failure causes or cascading failures.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Matrix dimension / max step keys (2-15, default 8)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -3791,6 +3802,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowStepFailureRate(args);
             break;
 
+          case 'get_workflow_step_cofailure_matrix':
+            logger.info(`[MCP_SERVER] Executing get_workflow_step_cofailure_matrix`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowStepCofailureMatrix(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4656,6 +4672,7 @@ export class TodoMcpServer {
                 'get_workflow_step_duration_histogram',
                 'get_workflow_run_duration_percentiles',
                 'get_workflow_step_failure_rate',
+                'get_workflow_step_cofailure_matrix',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_run',
@@ -5345,6 +5362,32 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `工作流步骤失败率排行(近${days}天, 共${totalSteps}步 ${totalFailed}失败):\n${lines.join('\n') || '无失败数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowStepCofailureMatrix(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(2, Math.min(15, Number(args?.limit ?? 8) || 8));
+    const result = await this.apiClient.getWorkflowStepCofailureMatrix(days, limit);
+    const data = result?.data || result || {};
+    const stepKeys: any[] = data.step_keys || [];
+    const matrix: any = data.matrix || {};
+    const maxCo = data.max_cofailure ?? 0;
+    const totalMulti = data.total_runs_with_multi_failure ?? 0;
+    const lines: string[] = [];
+    for (const sk of stepKeys) {
+      const row = matrix[sk.step_key] || {};
+      const coEntries = Object.entries(row)
+        .filter(([k]: any) => k !== sk.step_key)
+        .sort(([, a]: any, [, b]: any) => b - a)
+        .slice(0, 3)
+        .map(([k, v]: any) => `${k}=${v}`)
+        .join(', ');
+      lines.push(`- ${sk.step_key} (失败${sk.failures}): ${coEntries || '无共现'}`);
+    }
+    return this.toToolResponse(
+      `步骤共失败矩阵(近${days}天, ${totalMulti}次多步失败, 最大共现=${maxCo}):\n${lines.join('\n') || '无共失败数据'}`,
       result,
     );
   }
