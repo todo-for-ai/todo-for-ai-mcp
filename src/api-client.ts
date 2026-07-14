@@ -2350,6 +2350,14 @@ export class TodoApiClient {
     }, 'getExperiencesReuseTrend');
   }
 
+  async getExperiencesConfidenceDecayForecast(days = 30): Promise<any> {
+    logger.info(`[API_CLIENT] Getting experiences confidence decay forecast (days=${days})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/experiences/confidence-decay-forecast', { params: { days } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getExperiencesConfidenceDecayForecast');
+  }
+
   async getExperiencesDecayByDomain(limit = 15): Promise<any> {
     logger.info(`[API_CLIENT] Getting experiences decay by domain (limit=${limit})`);
     return this.executeWithRetry(async () => {

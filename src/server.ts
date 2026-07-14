@@ -2456,6 +2456,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_experiences_confidence_decay_forecast',
+          description: 'Confidence decay forecast using linear regression on daily averages. Projects 7 days ahead, reports regression slope, R-squared, and estimated days until average confidence drops below 0.5. Reveals whether the experience pool is decaying and when the decay threshold might be crossed.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Historical lookback window in days (7-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_experiences_decay_by_domain',
           description: 'Per-domain decay comparison for the user valid experiences. Aggregates by domain: total, active (confidence>=0.5), decayed (confidence<0.5), average confidence, total reuses. Sorted by decayed count descending. Reveals which knowledge domains have the most stale entries.',
           inputSchema: {
@@ -4199,6 +4209,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesReuseTrend(args);
             break;
 
+          case 'get_experiences_confidence_decay_forecast':
+            logger.info(`[MCP_SERVER] Executing get_experiences_confidence_decay_forecast`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesConfidenceDecayForecast(args);
+            break;
+
           case 'get_experiences_decay_by_domain':
             logger.info(`[MCP_SERVER] Executing get_experiences_decay_by_domain`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetExperiencesDecayByDomain(args);
@@ -4760,6 +4775,7 @@ export class TodoMcpServer {
                 'get_experiences_low_confidence',
                 'get_experiences_scatter',
                 'get_experiences_reuse_trend',
+                'get_experiences_confidence_decay_forecast',
                 'get_experiences_decay_by_domain',
                 'get_experiences_decay_by_task_type',
                 'get_experiences_confidence_distribution',
@@ -6220,6 +6236,25 @@ export class TodoMcpServer {
       `经验复用+衰减趋势(近${days}天, 共${totalExp}条经验):\n` +
       `被复用经验=${totalReused} 累计复用次数=${totalReuseCount} 已衰减(置信度<0.5)=${decayedCount}\n` +
       `近${recent.length}日明细:\n${lines.join('\n') || '  无'}`,
+      result,
+    );
+  }
+
+  private async handleGetExperiencesConfidenceDecayForecast(args: any) {
+    const days = Math.max(7, Math.min(365, Number(args?.days ?? 30) || 30));
+    const result = await this.apiClient.getExperiencesConfidenceDecayForecast(days);
+    const data = result?.data || result || {};
+    const trend: any[] = data.trend || [];
+    const forecast: any[] = data.forecast || [];
+    const slope = data.slope ?? 0;
+    const rSq = data.r_squared ?? 0;
+    const daysToDecay = data.days_to_decay;
+    const fLines = forecast.map((f: any) => `  ${f.date}: 预测=${f.predicted_confidence}`);
+    const decayMsg = daysToDecay != null ? `约${daysToDecay}天后跌破0.5衰减线` : '暂无衰减风险';
+    return this.toToolResponse(
+      `经验置信度衰减预测(近${days}天, 斜率=${slope}, R²=${rSq}):\n` +
+      `历史${trend.length}天 → 预测7天:\n${fLines.join('\n') || '  无预测'}\n` +
+      decayMsg,
       result,
     );
   }
