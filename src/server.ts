@@ -2774,6 +2774,18 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_failure_error_patterns',
+          description: 'Agent failure error pattern clustering. Groups FAILED AgentRun rows by error text prefix, returning pattern clusters with count, affected agents, peak hour, and hourly distribution. Reveals systemic failure patterns and timing correlations.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max patterns returned (1-20, default 10)' },
+              prefix_len: { type: 'integer', description: 'Error text prefix length for grouping (10-120, default 40)' },
+            },
+          },
+        },
+        {
           name: 'get_conflicts_sandbox_correlation',
           description: 'Cross-dimension correlation between Agent conflicts and sandbox violations. For each conflict, checks whether a sandbox violation involving a conflict party occurred within ±window_hours. Reports co-occurrence rate, breakdown by conflict_type, and top agents whose conflicts most coincide with violations.',
           inputSchema: {
@@ -4449,6 +4461,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentFailureReasons(args);
             break;
 
+          case 'get_agent_failure_error_patterns':
+            logger.info(`[MCP_SERVER] Executing get_agent_failure_error_patterns`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentFailureErrorPatterns(args);
+            break;
+
           case 'get_conflicts_sandbox_correlation':
             logger.info(`[MCP_SERVER] Executing get_conflicts_sandbox_correlation`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetConflictsSandboxCorrelation(args);
@@ -4931,6 +4948,7 @@ export class TodoMcpServer {
                 'get_agent_productivity_calendar_heatmap',
                 'get_agent_productivity_weekly_comparison',
                 'get_agent_failure_reasons',
+                'get_agent_failure_error_patterns',
                 'get_conflicts_sandbox_correlation',
                 'get_agent_health',
                 'get_agent_health_trend',
@@ -6878,6 +6896,25 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `Agent 失败原因分布(近${data.days ?? days}天, 共${data.total_failed_runs ?? 0}次失败):\n${lines.join('\n') || '无失败记录'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentFailureErrorPatterns(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const prefixLen = Math.max(10, Math.min(120, Number(args?.prefix_len ?? 40) || 40));
+    const result = await this.apiClient.getAgentFailureErrorPatterns(days, limit, prefixLen);
+    const data = result?.data || result || {};
+    const patterns: any[] = data.patterns || [];
+    const totalFailed = data.total_failed ?? 0;
+    const lines = patterns.map((p: any) => {
+      const agents = (p.affected_agents || []).slice(0, 3).map((a: any) => a.name).join(', ');
+      const peak = p.peak_hour != null ? ` 峰值${p.peak_hour}时` : '';
+      return `- [${p.count}次] ${p.pattern}${peak} (涉及: ${agents || '无'})`;
+    });
+    return this.toToolResponse(
+      `Agent 错误模式聚类(近${data.days ?? days}天, 共${totalFailed}次失败, 前${prefixLen}字符分组):\n${lines.join('\n') || '无失败记录'}`,
       result,
     );
   }

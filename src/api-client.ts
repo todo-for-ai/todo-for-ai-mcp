@@ -2337,6 +2337,16 @@ export class TodoApiClient {
     }, 'getAgentFailureReasons');
   }
 
+  async getAgentFailureErrorPatterns(days = 30, limit = 10, prefixLen = 40): Promise<any> {
+    logger.info(`[API_CLIENT] Getting agent failure error patterns (days=${days}, limit=${limit}, prefix=${prefixLen})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/failure-error-patterns', {
+        params: { days, limit, prefix_len: prefixLen },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentFailureErrorPatterns');
+  }
+
   async getConflictsSandboxCorrelation(days = 30, windowHours = 2): Promise<any> {
     logger.info(`[API_CLIENT] Getting conflicts-sandbox correlation (days=${days}, window=${windowHours}h)`);
     return this.executeWithRetry(async () => {
