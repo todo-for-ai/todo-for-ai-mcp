@@ -2314,6 +2314,14 @@ export class TodoApiClient {
     }, 'getExperiencesDecayByTaskType');
   }
 
+  async getExperiencesConfidenceDistribution(): Promise<any> {
+    logger.info('[API_CLIENT] Getting experiences confidence distribution');
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/experiences/confidence-distribution');
+      return this.unwrapApiData<any>(response.data);
+    }, 'getExperiencesConfidenceDistribution');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {

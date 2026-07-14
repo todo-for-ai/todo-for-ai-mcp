@@ -2454,6 +2454,14 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_experiences_confidence_distribution',
+          description: 'Confidence interval distribution for the user valid experiences. Buckets into 5 intervals (0-0.2, 0.2-0.4, 0.4-0.6, 0.6-0.8, 0.8-1.0) with count, percentage, and average reuses. Reveals whether the experience pool is mostly high- or low-confidence.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+        {
           name: 'get_task_stats',
           description: 'Aggregate task lifecycle stats for the current user projects: total, by_status, by_priority, completion/cancellation rates, average lifecycle duration (hours) for done tasks, lifecycle duration buckets (0-1h ... >7d), average completion rate. Reveals throughput bottlenecks and abandonment.',
           inputSchema: { type: 'object', properties: {} },
@@ -4099,6 +4107,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesDecayByTaskType(args);
             break;
 
+          case 'get_experiences_confidence_distribution':
+            logger.info(`[MCP_SERVER] Executing get_experiences_confidence_distribution`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesConfidenceDistribution(args);
+            break;
+
           case 'get_task_stats':
             logger.info(`[MCP_SERVER] Executing get_task_stats`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskStats(args);
@@ -4610,6 +4623,7 @@ export class TodoMcpServer {
                 'get_experiences_reuse_trend',
                 'get_experiences_decay_by_domain',
                 'get_experiences_decay_by_task_type',
+                'get_experiences_confidence_distribution',
                 'get_task_stats',
                 'get_task_overdue_trend',
                 'get_task_overdue_by_assignee',
@@ -6049,6 +6063,20 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `经验按任务类型衰减对比(共${taskTypes.length}类型, 活跃=${totalActive} 衰减=${totalDecayed}):\n${lines.join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetExperiencesConfidenceDistribution(args: any) {
+    const result = await this.apiClient.getExperiencesConfidenceDistribution();
+    const data = result?.data || result || {};
+    const bins: any[] = data.bins || [];
+    const total = data.total ?? 0;
+    const lines = bins.map((b: any) =>
+      `${b.label}: ${b.count}条(${b.percentage}%) 均复用=${b.avg_reuses}`,
+    );
+    return this.toToolResponse(
+      `经验置信度分布(共${total}条):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }
