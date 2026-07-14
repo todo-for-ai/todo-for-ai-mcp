@@ -2414,6 +2414,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_experiences_decay_by_domain',
+          description: 'Per-domain decay comparison for the user valid experiences. Aggregates by domain: total, active (confidence>=0.5), decayed (confidence<0.5), average confidence, total reuses. Sorted by decayed count descending. Reveals which knowledge domains have the most stale entries.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max domains returned (1-50, default 15)' },
+            },
+          },
+        },
+        {
           name: 'get_task_stats',
           description: 'Aggregate task lifecycle stats for the current user projects: total, by_status, by_priority, completion/cancellation rates, average lifecycle duration (hours) for done tasks, lifecycle duration buckets (0-1h ... >7d), average completion rate. Reveals throughput bottlenecks and abandonment.',
           inputSchema: { type: 'object', properties: {} },
@@ -4029,6 +4039,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesReuseTrend(args);
             break;
 
+          case 'get_experiences_decay_by_domain':
+            logger.info(`[MCP_SERVER] Executing get_experiences_decay_by_domain`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesDecayByDomain(args);
+            break;
+
           case 'get_task_stats':
             logger.info(`[MCP_SERVER] Executing get_task_stats`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskStats(args);
@@ -4531,6 +4546,7 @@ export class TodoMcpServer {
                 'get_experiences_low_confidence',
                 'get_experiences_scatter',
                 'get_experiences_reuse_trend',
+                'get_experiences_decay_by_domain',
                 'get_task_stats',
                 'get_task_overdue_trend',
                 'get_task_completion_by_project',
@@ -5908,6 +5924,22 @@ export class TodoMcpServer {
       `经验复用+衰减趋势(近${days}天, 共${totalExp}条经验):\n` +
       `被复用经验=${totalReused} 累计复用次数=${totalReuseCount} 已衰减(置信度<0.5)=${decayedCount}\n` +
       `近${recent.length}日明细:\n${lines.join('\n') || '  无'}`,
+      result,
+    );
+  }
+
+  private async handleGetExperiencesDecayByDomain(args: any) {
+    const limit = Math.max(1, Math.min(50, Number(args?.limit ?? 15) || 15));
+    const result = await this.apiClient.getExperiencesDecayByDomain(limit);
+    const data = result?.data || result || {};
+    const domains: any[] = data.domains || [];
+    const totalActive = data.total_active ?? 0;
+    const totalDecayed = data.total_decayed ?? 0;
+    const lines = domains.map((d: any) =>
+      `- ${d.domain}: 总${d.total} 活跃=${d.active} 衰减=${d.decayed} 平均置信度=${d.avg_confidence} 复用=${d.reuses}`,
+    );
+    return this.toToolResponse(
+      `经验按域衰减对比(共${domains.length}域, 活跃=${totalActive} 衰减=${totalDecayed}):\n${lines.join('\n') || '无数据'}`,
       result,
     );
   }
