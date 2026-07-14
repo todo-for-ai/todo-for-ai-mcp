@@ -2134,6 +2134,14 @@ export class TodoApiClient {
     }, 'getTaskOverdueByAssignee');
   }
 
+  async getTaskCompletionByPriority(days = 30): Promise<any> {
+    logger.info(`[API_CLIENT] Getting task completion by priority (days=${days})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('tasks/completion-by-priority', { params: { days } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getTaskCompletionByPriority');
+  }
+
   async getTaskCompletionByProject(days = 30, limit = 8): Promise<any> {
     logger.info(`[API_CLIENT] Getting task completion by project (days=${days}, limit=${limit})`);
     return this.executeWithRetry(async () => {
