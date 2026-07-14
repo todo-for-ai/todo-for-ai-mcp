@@ -2370,6 +2370,14 @@ export class TodoApiClient {
     }, 'getExperiencesSourceDistribution');
   }
 
+  async getExperiencesPropagationChain(limit = 10): Promise<any> {
+    logger.info(`[API_CLIENT] Getting experiences propagation chain (limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/experiences/propagation-chain', { params: { limit } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getExperiencesPropagationChain');
+  }
+
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
     logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
     return this.executeWithRetry(async () => {

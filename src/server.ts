@@ -2481,6 +2481,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_experiences_propagation_chain',
+          description: 'Experience sharing propagation chain. Groups shared experiences by source agent with shared_count, total_reuses, top domains, and top propagated experiences. Reveals which agents contribute most to collective learning and how knowledge flows.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max source agents returned (1-20, default 10)' },
+            },
+          },
+        },
+        {
           name: 'get_task_stats',
           description: 'Aggregate task lifecycle stats for the current user projects: total, by_status, by_priority, completion/cancellation rates, average lifecycle duration (hours) for done tasks, lifecycle duration buckets (0-1h ... >7d), average completion rate. Reveals throughput bottlenecks and abandonment.',
           inputSchema: { type: 'object', properties: {} },
@@ -4183,6 +4193,11 @@ export class TodoMcpServer {
             result = await this.handleGetExperiencesSourceDistribution(args);
             break;
 
+          case 'get_experiences_propagation_chain':
+            logger.info(`[MCP_SERVER] Executing get_experiences_propagation_chain`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetExperiencesPropagationChain(args);
+            break;
+
           case 'get_task_stats':
             logger.info(`[MCP_SERVER] Executing get_task_stats`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetTaskStats(args);
@@ -4717,6 +4732,7 @@ export class TodoMcpServer {
                 'get_experiences_decay_by_task_type',
                 'get_experiences_confidence_distribution',
                 'get_experiences_source_distribution',
+                'get_experiences_propagation_chain',
                 'get_task_stats',
                 'get_task_overdue_trend',
                 'get_task_overdue_by_assignee',
@@ -6205,6 +6221,26 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `经验来源分布(共${total}条):\n${lines.join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetExperiencesPropagationChain(args: any) {
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getExperiencesPropagationChain(limit);
+    const data = result?.data || result || {};
+    const chains: any[] = data.chains || [];
+    const totalShared = data.total_shared ?? 0;
+    const totalPropagated = data.total_propagated ?? 0;
+    const lines = chains.map((c: any) => {
+      const topDomains = (c.top_domains || []).slice(0, 3).join('/');
+      const topExp = (c.top_experiences || []).slice(0, 3)
+        .map((e: any) => `${e.domain || '?'}(复用${e.times_reused})`)
+        .join(', ');
+      return `- ${c.source_agent_name}: 共享${c.shared_count}条 被复用${c.total_reuses}次 [${topDomains}] top: ${topExp}`;
+    });
+    return this.toToolResponse(
+      `经验共享传播链(共${totalShared}条共享 ${totalPropagated}次传播):\n${lines.join('\n') || '无共享经验'}`,
       result,
     );
   }
