@@ -2806,6 +2806,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_health_state_transitions',
+          description: 'Agent health state transition flow. Classifies each agent-day as healthy/degraded/critical based on reputation score thresholds. Counts state-to-state transitions, returning a flow suitable for Sankey visualization. Reveals how often agents degrade or recover.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (7-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_agent_health_alerts',
           description: 'Low-health Agent alert list for the current user. Returns Agents whose composite health_score < min_health_score (default 60), with triggering reasons (low reputation / low completion / conflicts / violations) and concrete improvement recommendations. Optional w_reputation/w_completion/w_conflict/w_violation override the default sub-score weights (0.4/0.3/0.15/0.15, normalised to 1). Each entry includes full health fields. Surfaces Agents needing attention.',
           inputSchema: {
@@ -4454,6 +4464,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentHealthTrend(args);
             break;
 
+          case 'get_agent_health_state_transitions':
+            logger.info(`[MCP_SERVER] Executing get_agent_health_state_transitions`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentHealthStateTransitions(args);
+            break;
+
           case 'get_agent_health_alerts':
             logger.info(`[MCP_SERVER] Executing get_agent_health_alerts`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetAgentHealthAlerts(args);
@@ -4919,6 +4934,7 @@ export class TodoMcpServer {
                 'get_conflicts_sandbox_correlation',
                 'get_agent_health',
                 'get_agent_health_trend',
+                'get_agent_health_state_transitions',
                 'get_agent_health_alerts',
                 'share_agent_experience',
                 'learn_from_experience',
@@ -6914,6 +6930,21 @@ export class TodoMcpServer {
         const kbStr = kbEntries.length ? ` [${kbEntries.map(([k, v]: any) => `${k}=${v}`).join(',')}]` : '';
         return `${b.date}: 平均声誉${b.avg_reputation ?? '—'} 正向${b.positive} 负向${b.negative} 冲突${b.conflicts ?? 0} 违规${b.sandbox_violations ?? 0}${kbStr}`;
       }).join('\n') || '无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentHealthStateTransitions(args: any) {
+    const days = Math.max(7, Math.min(365, Number(args?.days ?? 30) || 30));
+    const result = await this.apiClient.getAgentHealthStateTransitions(days);
+    const data = result?.data || result || {};
+    const states: any[] = data.states || [];
+    const flows: any[] = data.flows || [];
+    const totalTrans = data.total_transitions ?? 0;
+    const stateStr = states.map((s: any) => `${s.name}=${s.count}`).join(', ');
+    const flowStr = flows.map((f: any) => `${f.source}→${f.target}: ${f.value}`).join('\n');
+    return this.toToolResponse(
+      `健康状态流转(近${data.days ?? days}天, 共${totalTrans}次转换): ${stateStr}\n${flowStr || '无转换'}`,
       result,
     );
   }
