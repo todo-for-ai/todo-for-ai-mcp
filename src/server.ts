@@ -1325,6 +1325,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_run_duration_percentiles',
+          description: 'Daily trend of workflow run duration percentiles (P50/P90/P95). For each day, aggregates completed WorkflowRun durations and returns percentiles. Useful for spotting regressions in workflow execution time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -3692,6 +3702,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowStepDurationHistogram(args);
             break;
 
+          case 'get_workflow_run_duration_percentiles':
+            logger.info(`[MCP_SERVER] Executing get_workflow_run_duration_percentiles`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowRunDurationPercentiles(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4520,6 +4535,7 @@ export class TodoMcpServer {
                 'list_workflow_runs',
                 'get_workflow_step_stats',
                 'get_workflow_step_duration_histogram',
+                'get_workflow_run_duration_percentiles',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_run',
@@ -5171,6 +5187,20 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `工作流步骤耗时分布(top${items.length}):\n${lines.join('\n') || '暂无数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowRunDurationPercentiles(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const result = await this.apiClient.getWorkflowRunDurationPercentiles(days);
+    const data = result?.data || result || {};
+    const buckets: any[] = data.buckets || [];
+    const lines = buckets.map((b: any) =>
+      `${b.date}: n=${b.count} P50=${b.p50}s P90=${b.p90}s P95=${b.p95}s 均=${b.avg}s`
+    );
+    return this.toToolResponse(
+      `工作流运行时长分位数趋势(近${days}天, 共${data.total_runs ?? 0}次 总均${data.total_avg_duration ?? 0}s):\n${lines.join('\n') || '暂无数据'}`,
       result,
     );
   }

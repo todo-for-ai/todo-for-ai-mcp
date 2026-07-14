@@ -1328,6 +1328,14 @@ export class TodoApiClient {
     }, 'getWorkflowStepDurationHistogram');
   }
 
+  async getWorkflowRunDurationPercentiles(days = 30): Promise<any> {
+    logger.info(`[API_CLIENT] Getting workflow run duration percentiles (days=${days})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/run-duration-percentiles', { params: { days } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowRunDurationPercentiles');
+  }
+
   async getWorkflowFailedStepsByDuration(args?: { days?: number; limit?: number }): Promise<any> {
     logger.info('[API_CLIENT] Getting workflow failed steps by duration');
     const params: Record<string, string> = {};
