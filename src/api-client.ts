@@ -1408,6 +1408,14 @@ export class TodoApiClient {
     }, 'getWorkflowSimilarityMatrix');
   }
 
+  async getAgentRunResourceTrend(days = 14, limit = 10): Promise<any> {
+    logger.info(`[API_CLIENT] Getting agent run resource trend (days=${days}, limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/run-resource-trend', { params: { days, limit } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentRunResourceTrend');
+  }
+
   async getWorkflowFailedStepsByDuration(args?: { days?: number; limit?: number }): Promise<any> {
     logger.info('[API_CLIENT] Getting workflow failed steps by duration');
     const params: Record<string, string> = {};

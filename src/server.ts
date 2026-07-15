@@ -1435,6 +1435,17 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_agent_run_resource_trend',
+          description: 'Per-agent daily run count and average duration trend. Returns sparkline-friendly daily series for run count and average duration per agent over the lookback window.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-90, default 14)' },
+              limit: { type: 'integer', description: 'Max agents returned (1-20, default 10)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -4015,6 +4026,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowSimilarityMatrix(args);
             break;
 
+          case 'get_agent_run_resource_trend':
+            logger.info(`[MCP_SERVER] Executing get_agent_run_resource_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentRunResourceTrend(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4933,6 +4949,7 @@ export class TodoMcpServer {
                 'get_collaboration_graph_timeline',
                 'get_task_allocation_fairness',
                 'get_workflow_similarity_matrix',
+                'get_agent_run_resource_trend',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_success_rate_by_workflow',
@@ -5773,6 +5790,24 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `工作流运行相似度矩阵(近${data.days ?? days}天):\n${lines.join('\n') || '无相似度数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentRunResourceTrend(args: any) {
+    const days = Math.max(1, Math.min(90, Number(args?.days ?? 14) || 14));
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getAgentRunResourceTrend(days, limit);
+    const data = result?.data || result || {};
+    const agents: any[] = data.agents || [];
+    const lines = agents.map((a: any) => {
+      const total = a.count_series.reduce((s: number, v: number) => s + v, 0);
+      const avgDur = a.duration_series.filter((d: number) => d > 0);
+      const meanDur = avgDur.length ? (avgDur.reduce((s: number, v: number) => s + v, 0) / avgDur.length).toFixed(1) : '0';
+      return `- ${a.agent_name}: ${total}次运行(日均${(total / days).toFixed(1)}) 均时${meanDur}s`;
+    });
+    return this.toToolResponse(
+      `Agent运行资源趋势(近${data.days ?? days}天):\n${lines.join('\n') || '无运行数据'}`,
       result,
     );
   }
