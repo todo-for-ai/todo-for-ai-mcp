@@ -1315,16 +1315,6 @@ export class TodoMcpServer {
           },
         },
         {
-          name: 'get_workflow_step_duration_histogram',
-          description: 'Per-step-key duration histogram for completed workflow steps. Buckets durations into fixed bins (0-30s, 30-120s, 2-5m, 5-15m, 15-30m, 30m+) and computes median/P95. Reveals whether steps are consistently fast, have a long tail, or are bimodal.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              limit: { type: 'integer', description: 'Max step keys returned (1-30, default 10)' },
-            },
-          },
-        },
-        {
           name: 'get_workflow_run_duration_percentiles',
           description: 'Daily trend of workflow run duration percentiles (P50/P90/P95). For each day, aggregates completed WorkflowRun durations and returns percentiles. Useful for spotting regressions in workflow execution time.',
           inputSchema: {
@@ -3592,6 +3582,70 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_task_dependency_chain',
+          description: 'Task dependency chain analysis. Finds root tasks with subtask hierarchies, computes chain depth, total tasks, completion progress.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max chains returned (1-20, default 10)' },
+              project_id: { type: 'integer', description: 'Optional project filter' },
+            },
+          },
+        },
+        {
+          name: 'get_agent_skill_matching',
+          description: 'Agent skill matching recommendation. For unassigned in-progress tasks, match task keywords to agent capabilities and experience domains.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max tasks returned (1-20, default 10)' },
+            },
+          },
+        },
+        {
+          name: 'get_workflow_step_duration_histogram',
+          description: 'Workflow step duration histogram. Buckets completed step durations into time ranges (0-10s, 10-30s, 30-60s, 60-120s, 120-300s, 300s+) per step_key.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-90, default 30)' },
+              limit: { type: 'integer', description: 'Max step keys returned (1-20, default 10)' },
+            },
+          },
+        },
+        {
+          name: 'get_task_comment_sentiment_trend',
+          description: 'Task comment sentiment trend. Aggregates comment events by day and classifies sentiment (positive/negative/neutral) based on keyword matching.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-90, default 30)' },
+            },
+          },
+        },
+        {
+          name: 'get_agent_task_handoff_stats',
+          description: 'Agent task handoff statistics. Aggregates handoff events by (from_agent, to_agent) pairs, counts frequency and average handoff duration.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-90, default 30)' },
+              limit: { type: 'integer', description: 'Max handoff pairs returned (1-20, default 10)' },
+            },
+          },
+        },
+        {
+          name: 'get_channel_activity_trend',
+          description: 'Channel activity trend. Per-channel daily message count sparkline and active member count over the lookback window.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-90, default 14)' },
+              limit: { type: 'integer', description: 'Max channels returned (1-20, default 10)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -3969,11 +4023,6 @@ export class TodoMcpServer {
           case 'get_workflow_step_stats':
             logger.info(`[MCP_SERVER] Executing get_workflow_step_stats`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowStepStats(args);
-            break;
-
-          case 'get_workflow_step_duration_histogram':
-            logger.info(`[MCP_SERVER] Executing get_workflow_step_duration_histogram`, { requestId, instanceId: this.instanceId });
-            result = await this.handleGetWorkflowStepDurationHistogram(args);
             break;
 
           case 'get_workflow_run_duration_percentiles':
@@ -4888,6 +4937,36 @@ export class TodoMcpServer {
             result = await this.handleOrchestratorDailyTrend(args);
             break;
 
+          case 'get_task_dependency_chain':
+            logger.info(`[MCP_SERVER] Executing get_task_dependency_chain`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskDependencyChain(args);
+            break;
+
+          case 'get_agent_skill_matching':
+            logger.info(`[MCP_SERVER] Executing get_agent_skill_matching`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentSkillMatching(args);
+            break;
+
+          case 'get_workflow_step_duration_histogram':
+            logger.info(`[MCP_SERVER] Executing get_workflow_step_duration_histogram`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowStepDurationHistogram(args);
+            break;
+
+          case 'get_task_comment_sentiment_trend':
+            logger.info(`[MCP_SERVER] Executing get_task_comment_sentiment_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskCommentSentimentTrend(args);
+            break;
+
+          case 'get_agent_task_handoff_stats':
+            logger.info(`[MCP_SERVER] Executing get_agent_task_handoff_stats`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentTaskHandoffStats(args);
+            break;
+
+          case 'get_channel_activity_trend':
+            logger.info(`[MCP_SERVER] Executing get_channel_activity_trend`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetChannelActivityTrend(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5116,7 +5195,13 @@ export class TodoMcpServer {
                 'orchestrate',
                 'get_orchestrator_status',
                 'list_orchestrator_history',
-                'orchestrator_daily_trend'
+                'orchestrator_daily_trend',
+                'get_task_dependency_chain',
+                'get_agent_skill_matching',
+                'get_workflow_step_duration_histogram',
+                'get_task_comment_sentiment_trend',
+                'get_agent_task_handoff_stats',
+                'get_channel_activity_trend'
               ]
             });
             throw error;
@@ -5604,21 +5689,6 @@ export class TodoMcpServer {
       })
       .join('\n');
     return this.toToolResponse(`工作流步骤统计:\n${summary || '暂无步骤运行数据'}`, result);
-  }
-
-  private async handleGetWorkflowStepDurationHistogram(args: any) {
-    const limit = Math.max(1, Math.min(30, Number(args?.limit ?? 10) || 10));
-    const result = await this.apiClient.getWorkflowStepDurationHistogram(limit);
-    const data = result?.data || result || {};
-    const items: any[] = data.items || [];
-    const lines = items.map((it: any) => {
-      const bins = Object.entries(it.bins || {}).map(([k, v]: any) => `${k}=${v}`).join(', ');
-      return `• ${it.step_key} (n=${it.sample_size}): 中位=${it.median_seconds}s P95=${it.p95_seconds}s 范围${it.min_seconds}-${it.max_seconds}s [${bins}]`;
-    });
-    return this.toToolResponse(
-      `工作流步骤耗时分布(top${items.length}):\n${lines.join('\n') || '暂无数据'}`,
-      result,
-    );
   }
 
   private async handleGetWorkflowRunDurationPercentiles(args: any) {
@@ -7878,6 +7948,97 @@ export class TodoMcpServer {
       ? `编排按天趋势 (${days.length} 天, 共 ${totals.runs ?? 0} 次, 累计触发 ${totals.triggers_fired ?? 0}, 累计解决冲突 ${totals.conflicts_resolved ?? 0}, 累计错误 ${totals.errors ?? 0}):\n${lines.join('\n')}`
       : '无编排按天趋势数据。';
     return this.toToolResponse(summary, result);
+  }
+
+  private async handleGetTaskDependencyChain(args: any) {
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const projectId = args?.project_id ? Number(args.project_id) : undefined;
+    const result = await this.apiClient.getTaskDependencyChain(limit, projectId);
+    const data = result?.data || result || {};
+    const chains: any[] = data.chains || [];
+    const lines = chains.map((c: any) =>
+      `• ${c.root_title}: 深度${c.depth} 共${c.total_tasks}任务 完成${c.completed} 进行中${c.in_progress} 进度${c.progress_pct}%`
+    );
+    return this.toToolResponse(
+      `任务依赖链分析:\n${lines.join('\n') || '无依赖链数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentSkillMatching(args: any) {
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getAgentSkillMatching(limit);
+    const data = result?.data || result || {};
+    const tasks: any[] = data.tasks || [];
+    const lines = tasks.map((t: any) => {
+      const recs = (t.recommendations || []).map((r: any) => `${r.agent_name}(${r.match_score}%)`).join(', ');
+      return `• ${t.task_title}: ${recs || '无匹配Agent'}`;
+    });
+    return this.toToolResponse(
+      `Agent技能匹配推荐:\n${lines.join('\n') || '无匹配数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowStepDurationHistogram(args: any) {
+    const days = Math.max(1, Math.min(90, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getWorkflowStepDurationHistogram(days, limit);
+    const data = result?.data || result || {};
+    const steps: any[] = data.steps || [];
+    const lines = steps.map((s: any) => {
+      const buckets = (s.buckets || []).map((b: any) => `${b.range}:${b.count}`).join(' ');
+      return `• ${s.step_key}: ${buckets}`;
+    });
+    return this.toToolResponse(
+      `步骤耗时分布直方图(近${data.days ?? days}天):\n${lines.join('\n') || '无耗时数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskCommentSentimentTrend(args: any) {
+    const days = Math.max(1, Math.min(90, Number(args?.days ?? 30) || 30));
+    const result = await this.apiClient.getTaskCommentSentimentTrend(days);
+    const data = result?.data || result || {};
+    const trend: any[] = data.trend || [];
+    const lines = trend.map((d: any) =>
+      `• ${d.date}: 积极${d.positive} 消极${d.negative} 中性${d.neutral}`
+    );
+    return this.toToolResponse(
+      `评论情感趋势(近${data.days ?? days}天):\n${lines.join('\n') || '无评论数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentTaskHandoffStats(args: any) {
+    const days = Math.max(1, Math.min(90, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getAgentTaskHandoffStats(days, limit);
+    const data = result?.data || result || {};
+    const handoffs: any[] = data.handoffs || [];
+    const lines = handoffs.map((h: any) =>
+      `• ${h.from_agent}→${h.to_agent}: ${h.count}次 均${h.avg_duration_seconds ?? 0}s`
+    );
+    return this.toToolResponse(
+      `Agent任务交接统计(近${data.days ?? days}天):\n${lines.join('\n') || '无交接数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetChannelActivityTrend(args: any) {
+    const days = Math.max(1, Math.min(90, Number(args?.days ?? 14) || 14));
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getChannelActivityTrend(days, limit);
+    const data = result?.data || result || {};
+    const channels: any[] = data.channels || [];
+    const lines = channels.map((c: any) => {
+      const total = (c.daily_counts || []).reduce((s: number, v: number) => s + v, 0);
+      return `• ${c.channel_name}: ${total}条消息 活跃成员${c.active_members ?? 0}`;
+    });
+    return this.toToolResponse(
+      `频道活跃度趋势(近${data.days ?? days}天):\n${lines.join('\n') || '无频道数据'}`,
+      result,
+    );
   }
 
   async run(): Promise<void> {

@@ -1320,14 +1320,6 @@ export class TodoApiClient {
     }, 'getWorkflowStepStats');
   }
 
-  async getWorkflowStepDurationHistogram(limit = 10): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow step duration histogram (limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/step-duration-histogram', { params: { limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowStepDurationHistogram');
-  }
-
   async getWorkflowRunDurationPercentiles(days = 30): Promise<any> {
     logger.info(`[API_CLIENT] Getting workflow run duration percentiles (days=${days})`);
     return this.executeWithRetry(async () => {
@@ -3059,6 +3051,66 @@ export class TodoApiClient {
       });
       return this.unwrapApiData<any>(response.data);
     }, 'orchestratorDailyTrend');
+  }
+
+  async getTaskDependencyChain(limit = 10, projectId?: number): Promise<any> {
+    logger.info('[API_CLIENT] Getting task dependency chain', { limit, projectId });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('tasks/dependency-chain', {
+        params: this.compactParams({ limit, project_id: projectId }),
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getTaskDependencyChain');
+  }
+
+  async getAgentSkillMatching(limit = 10): Promise<any> {
+    logger.info('[API_CLIENT] Getting agent skill matching', { limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/skill-matching', {
+        params: { limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentSkillMatching');
+  }
+
+  async getWorkflowStepDurationHistogram(days = 30, limit = 10): Promise<any> {
+    logger.info('[API_CLIENT] Getting workflow step duration histogram', { days, limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/step-duration-histogram', {
+        params: { days, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowStepDurationHistogram');
+  }
+
+  async getTaskCommentSentimentTrend(days = 30): Promise<any> {
+    logger.info('[API_CLIENT] Getting task comment sentiment trend', { days });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('tasks/comment-sentiment-trend', {
+        params: { days },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getTaskCommentSentimentTrend');
+  }
+
+  async getAgentTaskHandoffStats(days = 30, limit = 10): Promise<any> {
+    logger.info('[API_CLIENT] Getting agent task handoff stats', { days, limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/task-handoff-stats', {
+        params: { days, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentTaskHandoffStats');
+  }
+
+  async getChannelActivityTrend(days = 14, limit = 10): Promise<any> {
+    logger.info('[API_CLIENT] Getting channel activity trend', { days, limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/channels/activity-trend', {
+        params: { days, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getChannelActivityTrend');
   }
 
   /**
