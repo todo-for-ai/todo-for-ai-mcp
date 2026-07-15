@@ -1384,6 +1384,14 @@ export class TodoApiClient {
     }, 'getAgentCapabilityGapAnalysis');
   }
 
+  async getCollaborationGraphTimeline(days = 14, bucket = 'day', limit = 50): Promise<any> {
+    logger.info(`[API_CLIENT] Getting collaboration graph timeline (days=${days}, bucket=${bucket}, limit=${limit})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/collaboration-graph-timeline', { params: { days, bucket, limit } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getCollaborationGraphTimeline');
+  }
+
   async getWorkflowFailedStepsByDuration(args?: { days?: number; limit?: number }): Promise<any> {
     logger.info('[API_CLIENT] Getting workflow failed steps by duration');
     const params: Record<string, string> = {};

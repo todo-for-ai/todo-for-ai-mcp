@@ -1401,6 +1401,18 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_collaboration_graph_timeline',
+          description: 'Day-by-day collaboration graph snapshots for timeline replay. Returns bucketed (day/week) snapshots of collaboration edges between agents, showing how collaboration patterns evolve over time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-90, default 14)' },
+              bucket: { type: 'string', description: 'Bucket type: day or week (default day)' },
+              limit: { type: 'integer', description: 'Max edges per snapshot (1-200, default 50)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -3966,6 +3978,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentCapabilityGapAnalysis(args);
             break;
 
+          case 'get_collaboration_graph_timeline':
+            logger.info(`[MCP_SERVER] Executing get_collaboration_graph_timeline`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetCollaborationGraphTimeline(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4881,6 +4898,7 @@ export class TodoMcpServer {
                 'get_workflow_step_hourly_distribution',
                 'get_workflow_step_dependency_bottleneck',
                 'get_agent_capability_gap_analysis',
+                'get_collaboration_graph_timeline',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_success_rate_by_workflow',
@@ -5672,6 +5690,23 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `Agent能力缺口分析:\n${lines.join('\n') || '无缺口数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetCollaborationGraphTimeline(args: any) {
+    const days = Math.max(1, Math.min(90, Number(args?.days ?? 14) || 14));
+    const bucket = args?.bucket === 'week' ? 'week' : 'day';
+    const limit = Math.max(1, Math.min(200, Number(args?.limit ?? 50) || 50));
+    const result = await this.apiClient.getCollaborationGraphTimeline(days, bucket, limit);
+    const data = result?.data || result || {};
+    const snapshots: any[] = data.snapshots || [];
+    const lines = snapshots.map((s: any) => {
+      const topEdges = (s.edges || []).slice(0, 5).map((e: any) => `${e.source_name}↔${e.target_name}(${e.count})`);
+      return `- ${s.date}: ${s.active_agents}活跃Agent ${s.total_edges}条边 top[${topEdges.join(', ')}]`;
+    });
+    return this.toToolResponse(
+      `协作图时段快照(近${data.days ?? days}天, ${bucket}分桶):\n${lines.join('\n') || '无协作数据'}`,
       result,
     );
   }
