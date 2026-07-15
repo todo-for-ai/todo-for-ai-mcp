@@ -1400,6 +1400,14 @@ export class TodoApiClient {
     }, 'getTaskAllocationFairness');
   }
 
+  async getWorkflowSimilarityMatrix(days = 30, limit = 5, maxRuns = 20): Promise<any> {
+    logger.info(`[API_CLIENT] Getting workflow similarity matrix (days=${days}, limit=${limit}, max_runs=${maxRuns})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/similarity-matrix', { params: { days, limit, max_runs: maxRuns } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowSimilarityMatrix');
+  }
+
   async getWorkflowFailedStepsByDuration(args?: { days?: number; limit?: number }): Promise<any> {
     logger.info('[API_CLIENT] Getting workflow failed steps by duration');
     const params: Record<string, string> = {};

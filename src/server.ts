@@ -1423,6 +1423,18 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_workflow_similarity_matrix',
+          description: 'Workflow run similarity matrix. Computes pairwise Jaccard similarity between workflow run step_key sets. Returns matrix and most/least similar run pairs. Reveals how consistent workflow executions are.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max workflow definitions (1-10, default 5)' },
+              max_runs: { type: 'integer', description: 'Max runs per workflow (2-50, default 20)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -3998,6 +4010,11 @@ export class TodoMcpServer {
             result = await this.handleGetTaskAllocationFairness(args);
             break;
 
+          case 'get_workflow_similarity_matrix':
+            logger.info(`[MCP_SERVER] Executing get_workflow_similarity_matrix`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowSimilarityMatrix(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4915,6 +4932,7 @@ export class TodoMcpServer {
                 'get_agent_capability_gap_analysis',
                 'get_collaboration_graph_timeline',
                 'get_task_allocation_fairness',
+                'get_workflow_similarity_matrix',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_success_rate_by_workflow',
@@ -5737,6 +5755,24 @@ export class TodoMcpServer {
     const lines = agents.map((a: any) => `- ${a.name}: ${a.total}任务(完成${a.completed} 进行中${a.in_progress})`);
     return this.toToolResponse(
       `任务分配公平性(近${data.days ?? days}天): Gini=${gini} (${level})\n${lines.join('\n') || '无分配数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowSimilarityMatrix(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(10, Number(args?.limit ?? 5) || 5));
+    const maxRuns = Math.max(2, Math.min(50, Number(args?.max_runs ?? 20) || 20));
+    const result = await this.apiClient.getWorkflowSimilarityMatrix(days, limit, maxRuns);
+    const data = result?.data || result || {};
+    const workflows: any[] = data.workflows || [];
+    const lines = workflows.map((wf: any) => {
+      const mostSim = (wf.most_similar || []).map((p: any) => `#${p.run_a}↔#${p.run_b}=${p.similarity}`);
+      const leastSim = (wf.least_similar || []).map((p: any) => `#${p.run_a}↔#${p.run_b}=${p.similarity}`);
+      return `- ${wf.workflow_name}(${wf.run_count}次运行): 最相似[${mostSim.join(', ')}] 最不相似[${leastSim.join(', ')}]`;
+    });
+    return this.toToolResponse(
+      `工作流运行相似度矩阵(近${data.days ?? days}天):\n${lines.join('\n') || '无相似度数据'}`,
       result,
     );
   }
