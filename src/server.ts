@@ -1413,6 +1413,16 @@ export class TodoMcpServer {
           },
         },
         {
+          name: 'get_task_allocation_fairness',
+          description: 'Task allocation fairness analysis. Computes Gini coefficient and Lorenz curve for task distribution across agents. Identifies allocation inequality: Gini 0 = equal, 1 = all tasks to one agent.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+            },
+          },
+        },
+        {
           name: 'get_workflow_failed_steps_by_duration',
           description: 'Rank failed workflow steps by average wall-clock duration (finished - started). Per step_key: failures count, avg/median/max duration in seconds, sorted by avg duration descending. Reveals which failing steps burn the most time before giving up.',
           inputSchema: {
@@ -3983,6 +3993,11 @@ export class TodoMcpServer {
             result = await this.handleGetCollaborationGraphTimeline(args);
             break;
 
+          case 'get_task_allocation_fairness':
+            logger.info(`[MCP_SERVER] Executing get_task_allocation_fairness`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskAllocationFairness(args);
+            break;
+
           case 'get_workflow_failed_steps_by_duration':
             logger.info(`[MCP_SERVER] Executing get_workflow_failed_steps_by_duration`, { requestId, instanceId: this.instanceId });
             result = await this.handleGetWorkflowFailedStepsByDuration(args);
@@ -4899,6 +4914,7 @@ export class TodoMcpServer {
                 'get_workflow_step_dependency_bottleneck',
                 'get_agent_capability_gap_analysis',
                 'get_collaboration_graph_timeline',
+                'get_task_allocation_fairness',
                 'get_workflow_failed_steps_by_duration',
                 'get_workflow_run_trend',
                 'get_workflow_success_rate_by_workflow',
@@ -5707,6 +5723,20 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `协作图时段快照(近${data.days ?? days}天, ${bucket}分桶):\n${lines.join('\n') || '无协作数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskAllocationFairness(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const result = await this.apiClient.getTaskAllocationFairness(days);
+    const data = result?.data || result || {};
+    const agents: any[] = data.agents || [];
+    const gini = data.gini ?? 0;
+    const level = data.fairness_level ?? 'unknown';
+    const lines = agents.map((a: any) => `- ${a.name}: ${a.total}任务(完成${a.completed} 进行中${a.in_progress})`);
+    return this.toToolResponse(
+      `任务分配公平性(近${data.days ?? days}天): Gini=${gini} (${level})\n${lines.join('\n') || '无分配数据'}`,
       result,
     );
   }

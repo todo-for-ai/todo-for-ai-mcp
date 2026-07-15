@@ -1392,6 +1392,14 @@ export class TodoApiClient {
     }, 'getCollaborationGraphTimeline');
   }
 
+  async getTaskAllocationFairness(days = 30): Promise<any> {
+    logger.info(`[API_CLIENT] Getting task allocation fairness (days=${days})`);
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/task-allocation-fairness', { params: { days } });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getTaskAllocationFairness');
+  }
+
   async getWorkflowFailedStepsByDuration(args?: { days?: number; limit?: number }): Promise<any> {
     logger.info('[API_CLIENT] Getting workflow failed steps by duration');
     const params: Record<string, string> = {};
