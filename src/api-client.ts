@@ -3143,6 +3143,16 @@ export class TodoApiClient {
     }, 'getWorkflowStepBottleneckTimeline');
   }
 
+  async getProtocolDecisionLatency(days = 30): Promise<any> {
+    logger.info('[API_CLIENT] Getting protocol decision latency', { days });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/protocol-decision-latency', {
+        params: { days },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getProtocolDecisionLatency');
+  }
+
   /**
    * Test connection to the Todo API
    */

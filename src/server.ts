@@ -3680,6 +3680,16 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_protocol_decision_latency',
+          description: 'Collaboration protocol decision latency analysis. For resolved protocols, computes creation-to-resolution latency aggregated by protocol type (avg/median/min/max).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window (1-365, default 30)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -5016,6 +5026,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowStepBottleneckTimeline(args);
             break;
 
+          case 'get_protocol_decision_latency':
+            logger.info(`[MCP_SERVER] Executing get_protocol_decision_latency`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetProtocolDecisionLatency(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5253,7 +5268,8 @@ export class TodoMcpServer {
                 'get_channel_activity_trend',
                 'get_agent_workload_forecast',
                 'get_knowledge_propagation_network',
-                'get_workflow_step_bottleneck_timeline'
+                'get_workflow_step_bottleneck_timeline',
+                'get_protocol_decision_latency'
               ]
             });
             throw error;
@@ -8136,6 +8152,21 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `步骤瓶颈时序(近${data.days ?? days}天):\n${lines.join('\n') || '无时序数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetProtocolDecisionLatency(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const result = await this.apiClient.getProtocolDecisionLatency(days);
+    const data = result?.data || result || {};
+    const types: any[] = data.types || [];
+    const lines = types.map((t: any) => {
+      const fmt = (s: number) => s >= 3600 ? `${(s / 3600).toFixed(1)}h` : s >= 60 ? `${(s / 60).toFixed(1)}m` : `${s}s`;
+      return `• ${t.protocol_type}: ${t.count}次 均${fmt(t.avg_seconds)} 中位${fmt(t.median_seconds)}`;
+    });
+    return this.toToolResponse(
+      `协议决策延迟(近${data.days ?? days}天, 共${data.total ?? 0}个已决议):\n${lines.join('\n') || '无决议数据'}`,
       result,
     );
   }
