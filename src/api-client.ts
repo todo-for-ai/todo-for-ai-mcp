@@ -3163,6 +3163,16 @@ export class TodoApiClient {
     }, 'getTaskReworkAnalysis');
   }
 
+  async getAgentSpecializationEvolution(weeks = 12, limit = 8): Promise<any> {
+    logger.info('[API_CLIENT] Getting agent specialization evolution', { weeks, limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/specialization-evolution', {
+        params: { weeks, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentSpecializationEvolution');
+  }
+
   /**
    * Test connection to the Todo API
    */

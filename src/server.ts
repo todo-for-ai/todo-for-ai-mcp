@@ -3701,6 +3701,17 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_agent_specialization_evolution',
+          description: 'Track how each Agent domain coverage evolves over time. Weekly distinct domain count series, revealing specialization vs generalization trends.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              weeks: { type: 'integer', description: 'Lookback window in weeks (2-26, default 12)' },
+              limit: { type: 'integer', description: 'Max agents (1-15, default 8)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -5047,6 +5058,11 @@ export class TodoMcpServer {
             result = await this.handleGetTaskReworkAnalysis(args);
             break;
 
+          case 'get_agent_specialization_evolution':
+            logger.info(`[MCP_SERVER] Executing get_agent_specialization_evolution`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentSpecializationEvolution(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5286,7 +5302,8 @@ export class TodoMcpServer {
                 'get_knowledge_propagation_network',
                 'get_workflow_step_bottleneck_timeline',
                 'get_protocol_decision_latency',
-                'get_task_rework_analysis'
+                'get_task_rework_analysis',
+                'get_agent_specialization_evolution'
               ]
             });
             throw error;
@@ -8198,6 +8215,21 @@ export class TodoMcpServer {
     const projLines = (data.by_project || []).map((p: any) => `${p.project_name}=${p.rework_count}`).join(' ');
     return this.toToolResponse(
       `任务返工分析(近${data.days ?? days}天, ${data.total_reworked ?? 0}个任务 ${data.total_rework_events ?? 0}次返工):\n${lines.join('\n') || '无返工'}\n按项目: ${projLines || '无'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentSpecializationEvolution(args: any) {
+    const weeks = Math.max(2, Math.min(26, Number(args?.weeks ?? 12) || 12));
+    const limit = Math.max(1, Math.min(15, Number(args?.limit ?? 8) || 8));
+    const result = await this.apiClient.getAgentSpecializationEvolution(weeks, limit);
+    const data = result?.data || result || {};
+    const agents: any[] = data.agents || [];
+    const lines = agents.map((a: any) =>
+      `- ${a.agent_name}: 累计${a.total_domains}域 峰值${a.peak_domains}域 [${(a.domains || []).join(',')}]`
+    );
+    return this.toToolResponse(
+      `Agent专长演化(近${data.weeks ?? weeks}周):\n${lines.join('\n') || '无经验数据'}`,
       result,
     );
   }
