@@ -3690,6 +3690,17 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_task_rework_analysis',
+          description: 'Task rework analysis. Finds tasks reverted from done/review back to in_progress/todo, counts per-task rework, total reworked tasks, and per-project rework rate.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max tasks (1-30, default 15)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -5031,6 +5042,11 @@ export class TodoMcpServer {
             result = await this.handleGetProtocolDecisionLatency(args);
             break;
 
+          case 'get_task_rework_analysis':
+            logger.info(`[MCP_SERVER] Executing get_task_rework_analysis`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetTaskReworkAnalysis(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5269,7 +5285,8 @@ export class TodoMcpServer {
                 'get_agent_workload_forecast',
                 'get_knowledge_propagation_network',
                 'get_workflow_step_bottleneck_timeline',
-                'get_protocol_decision_latency'
+                'get_protocol_decision_latency',
+                'get_task_rework_analysis'
               ]
             });
             throw error;
@@ -8167,6 +8184,20 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `协议决策延迟(近${data.days ?? days}天, 共${data.total ?? 0}个已决议):\n${lines.join('\n') || '无决议数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetTaskReworkAnalysis(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(30, Number(args?.limit ?? 15) || 15));
+    const result = await this.apiClient.getTaskReworkAnalysis(days, limit);
+    const data = result?.data || result || {};
+    const tasks: any[] = data.tasks || [];
+    const lines = tasks.map((t: any) => `• ${t.title}: 返工${t.rework_count}次 (${t.project_name})`);
+    const projLines = (data.by_project || []).map((p: any) => `${p.project_name}=${p.rework_count}`).join(' ');
+    return this.toToolResponse(
+      `任务返工分析(近${data.days ?? days}天, ${data.total_reworked ?? 0}个任务 ${data.total_rework_events ?? 0}次返工):\n${lines.join('\n') || '无返工'}\n按项目: ${projLines || '无'}`,
       result,
     );
   }

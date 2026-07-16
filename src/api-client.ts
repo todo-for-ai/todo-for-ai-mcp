@@ -3153,6 +3153,16 @@ export class TodoApiClient {
     }, 'getProtocolDecisionLatency');
   }
 
+  async getTaskReworkAnalysis(days = 30, limit = 15): Promise<any> {
+    logger.info('[API_CLIENT] Getting task rework analysis', { days, limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('tasks/rework-analysis', {
+        params: { days, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getTaskReworkAnalysis');
+  }
+
   /**
    * Test connection to the Todo API
    */
