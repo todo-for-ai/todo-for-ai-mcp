@@ -3113,6 +3113,16 @@ export class TodoApiClient {
     }, 'getChannelActivityTrend');
   }
 
+  async getAgentWorkloadForecast(days = 30, horizon = 3, limit = 10): Promise<any> {
+    logger.info('[API_CLIENT] Getting agent workload forecast', { days, horizon, limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workload-forecast', {
+        params: { days, horizon, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentWorkloadForecast');
+  }
+
   /**
    * Test connection to the Todo API
    */

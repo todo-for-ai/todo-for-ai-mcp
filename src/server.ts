@@ -3646,6 +3646,18 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_agent_workload_forecast',
+          description: 'Forecast each Agent near-future task load via linear regression on daily assignment counts. Returns per-agent slope, multi-day forecast, and recent average.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window (7-90, default 30)' },
+              horizon: { type: 'integer', description: 'Forecast days (1-14, default 3)' },
+              limit: { type: 'integer', description: 'Max agents (1-20, default 10)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -4967,6 +4979,11 @@ export class TodoMcpServer {
             result = await this.handleGetChannelActivityTrend(args);
             break;
 
+          case 'get_agent_workload_forecast':
+            logger.info(`[MCP_SERVER] Executing get_agent_workload_forecast`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentWorkloadForecast(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5201,7 +5218,8 @@ export class TodoMcpServer {
                 'get_workflow_step_duration_histogram',
                 'get_task_comment_sentiment_trend',
                 'get_agent_task_handoff_stats',
-                'get_channel_activity_trend'
+                'get_channel_activity_trend',
+                'get_agent_workload_forecast'
               ]
             });
             throw error;
@@ -8037,6 +8055,23 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `频道活跃度趋势(近${data.days ?? days}天):\n${lines.join('\n') || '无频道数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentWorkloadForecast(args: any) {
+    const days = Math.max(7, Math.min(90, Number(args?.days ?? 30) || 30));
+    const horizon = Math.max(1, Math.min(14, Number(args?.horizon ?? 3) || 3));
+    const limit = Math.max(1, Math.min(20, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getAgentWorkloadForecast(days, horizon, limit);
+    const data = result?.data || result || {};
+    const agents: any[] = data.agents || [];
+    const lines = agents.map((a: any) => {
+      const arrow = a.trend === 'up' ? '↑' : a.trend === 'down' ? '↓' : '→';
+      return `- ${a.agent_name}: 近7日均${a.recent_avg} 预测${a.forecast_total} ${arrow} 趋势${a.slope}`;
+    });
+    return this.toToolResponse(
+      `Agent工作负载预测(近${data.days ?? days}天, 预测${data.horizon ?? horizon}天):\n${lines.join('\n') || '无负载数据'}`,
       result,
     );
   }
