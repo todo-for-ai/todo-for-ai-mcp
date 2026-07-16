@@ -3213,6 +3213,16 @@ export class TodoApiClient {
     }, 'getWorkflowStructuralComplexity');
   }
 
+  async getAgentIdleRanking(limit = 20): Promise<any> {
+    logger.info('[API_CLIENT] Getting agent idle ranking', { limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/idle-ranking', {
+        params: { limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentIdleRanking');
+  }
+
   /**
    * Test connection to the Todo API
    */

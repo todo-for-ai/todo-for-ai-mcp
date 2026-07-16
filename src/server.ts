@@ -3755,6 +3755,16 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_agent_idle_ranking',
+          description: 'Rank Agents by idle duration. Idle time is measured from the most recent of last_seen_at and the latest TaskAssignment activity (completed_at / heartbeat). Classifies each Agent as active (<24h), idle (1-7d), stale (7-30d), dormant (>30d), or never, surfacing stale/dormant Agents for cleanup.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max agents (1-50, default 20)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -5126,6 +5136,11 @@ export class TodoMcpServer {
             result = await this.handleGetWorkflowStructuralComplexity(args);
             break;
 
+          case 'get_agent_idle_ranking':
+            logger.info(`[MCP_SERVER] Executing get_agent_idle_ranking`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentIdleRanking(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5370,7 +5385,8 @@ export class TodoMcpServer {
                 'get_agent_experiences_decay_alerts',
                 'get_agent_cross_project_efficiency',
                 'get_agent_capability_supply_demand',
-                'get_workflow_structural_complexity'
+                'get_workflow_structural_complexity',
+                'get_agent_idle_ranking'
               ]
             });
             throw error;
@@ -8363,6 +8379,27 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `工作流结构复杂度: ${data.total_workflows ?? wfs.length}个 均步数${data.avg_steps ?? 0} 均深度${data.avg_depth ?? 0}\n${lines.join('\n') || '无活跃工作流'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentIdleRanking(args: any) {
+    const limit = Math.max(1, Math.min(50, Number(args?.limit ?? 20) || 20));
+    const result = await this.apiClient.getAgentIdleRanking(limit);
+    const data = result?.data || result || {};
+    const agents: any[] = data.agents || [];
+    const stages = data.stage_counts || {};
+    const stageLabel: Record<string, string> = {
+      active: '活跃', idle: '空闲', stale: '陈旧', dormant: '休眠', never: '从未',
+    };
+    const lines = agents.map((a: any) => {
+      const hours = a.idle_hours;
+      const dur = hours == null ? '从未活动' : hours < 24 ? `${hours.toFixed(1)}h` : `${(hours / 24).toFixed(1)}d`;
+      return `- ${a.agent_name}: ${dur} [${stageLabel[a.stage] || a.stage}]`;
+    });
+    const summary = Object.entries(stages).map(([k, v]) => `${stageLabel[k] || k}${v}`).join(' ');
+    return this.toToolResponse(
+      `Agent 闲置排行: ${data.total_agents ?? agents.length}个 ${summary}\n${lines.join('\n') || '无 Agent'}`,
       result,
     );
   }
