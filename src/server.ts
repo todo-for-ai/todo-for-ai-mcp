@@ -3712,6 +3712,18 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_agent_experiences_decay_alerts',
+          description: 'Flag Agents whose experience-base confidence is declining. Compares older-half vs newer-half average confidence within the window and returns agents whose confidence dropped beyond a threshold with a recommended action.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (7-365, default 30)' },
+              min_drop: { type: 'number', description: 'Minimum confidence drop to flag (0.02-0.5, default 0.1)' },
+              limit: { type: 'integer', description: 'Max alerts (1-30, default 10)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -5063,6 +5075,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentSpecializationEvolution(args);
             break;
 
+          case 'get_agent_experiences_decay_alerts':
+            logger.info(`[MCP_SERVER] Executing get_agent_experiences_decay_alerts`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentExperiencesDecayAlerts(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5303,7 +5320,8 @@ export class TodoMcpServer {
                 'get_workflow_step_bottleneck_timeline',
                 'get_protocol_decision_latency',
                 'get_task_rework_analysis',
-                'get_agent_specialization_evolution'
+                'get_agent_specialization_evolution',
+                'get_agent_experiences_decay_alerts'
               ]
             });
             throw error;
@@ -8230,6 +8248,22 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `Agent专长演化(近${data.weeks ?? weeks}周):\n${lines.join('\n') || '无经验数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentExperiencesDecayAlerts(args: any) {
+    const days = Math.max(7, Math.min(365, Number(args?.days ?? 30) || 30));
+    const minDrop = Math.max(0.02, Math.min(0.5, Number(args?.min_drop ?? 0.1) || 0.1));
+    const limit = Math.max(1, Math.min(30, Number(args?.limit ?? 10) || 10));
+    const result = await this.apiClient.getAgentExperiencesDecayAlerts(days, minDrop, limit);
+    const data = result?.data || result || {};
+    const alerts: any[] = data.alerts || [];
+    const lines = alerts.map((a: any) =>
+      `- ${a.agent_name}: 置信度 ${a.older_avg_confidence}→${a.newer_avg_confidence} (降${a.drop}, ${a.recommendation === 'review_recent_experiences' ? '建议复核近期经验' : '持续观察'})`
+    );
+    return this.toToolResponse(
+      `经验置信度衰减告警(近${data.days ?? days}天, 阈值${data.min_drop ?? minDrop}): ${data.total_alerts ?? alerts.length} 条\n${lines.join('\n') || '无衰减告警'}`,
       result,
     );
   }

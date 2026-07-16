@@ -3173,6 +3173,16 @@ export class TodoApiClient {
     }, 'getAgentSpecializationEvolution');
   }
 
+  async getAgentExperiencesDecayAlerts(days = 30, minDrop = 0.1, limit = 10): Promise<any> {
+    logger.info('[API_CLIENT] Getting agent experiences decay alerts', { days, minDrop, limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/experiences/decay-alerts', {
+        params: { days, min_drop: minDrop, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentExperiencesDecayAlerts');
+  }
+
   /**
    * Test connection to the Todo API
    */
