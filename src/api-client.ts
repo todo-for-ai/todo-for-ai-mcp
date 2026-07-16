@@ -3193,6 +3193,16 @@ export class TodoApiClient {
     }, 'getAgentCrossProjectEfficiency');
   }
 
+  async getAgentCapabilitySupplyDemand(limit = 20): Promise<any> {
+    logger.info('[API_CLIENT] Getting agent capability supply-demand', { limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/capability-supply-demand', {
+        params: { limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentCapabilitySupplyDemand');
+  }
+
   /**
    * Test connection to the Todo API
    */

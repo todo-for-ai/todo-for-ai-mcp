@@ -3735,6 +3735,16 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_agent_capability_supply_demand',
+          description: 'Analyze supply vs demand for each capability. Supply = agents declaring the capability; demand = active tasks requiring it. Identifies bottleneck (demand exceeds supply), missing (demand, no supply), surplus, and balanced capabilities so owners can rebalance the fleet skills against task requirements.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max capabilities (1-50, default 20)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -5096,6 +5106,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentCrossProjectEfficiency(args);
             break;
 
+          case 'get_agent_capability_supply_demand':
+            logger.info(`[MCP_SERVER] Executing get_agent_capability_supply_demand`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentCapabilitySupplyDemand(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5338,7 +5353,8 @@ export class TodoMcpServer {
                 'get_task_rework_analysis',
                 'get_agent_specialization_evolution',
                 'get_agent_experiences_decay_alerts',
-                'get_agent_cross_project_efficiency'
+                'get_agent_cross_project_efficiency',
+                'get_agent_capability_supply_demand'
               ]
             });
             throw error;
@@ -8296,6 +8312,27 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `跨项目借调效率(近${data.days ?? days}天): ${data.total_authorizations ?? auths.length}授权 活跃${data.active_count ?? 0} 已利用${data.utilized_count ?? 0} 闲置${data.idle_count ?? 0} 利用率${((data.utilization_rate ?? 0) * 100).toFixed(0)}%\n${lines.join('\n') || '无跨项目授权'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentCapabilitySupplyDemand(args: any) {
+    const limit = Math.max(1, Math.min(50, Number(args?.limit ?? 20) || 20));
+    const result = await this.apiClient.getAgentCapabilitySupplyDemand(limit);
+    const data = result?.data || result || {};
+    const caps: any[] = data.capabilities || [];
+    const statusLabel: Record<string, string> = {
+      missing: '缺口(无供给)',
+      bottleneck: '瓶颈(供不应求)',
+      surplus: '过剩',
+      unused_supply: '闲置供给',
+      balanced: '平衡',
+    };
+    const lines = caps.map((c: any) =>
+      `- ${c.capability}: 供给${c.supply} 需求${c.demand} [${statusLabel[c.status] || c.status}]`
+    );
+    return this.toToolResponse(
+      `能力供需匹配: ${data.total_capabilities ?? caps.length}项 瓶颈/缺口${data.bottleneck_count ?? 0} Agent${data.agent_total ?? 0} 活跃任务${data.active_task_total ?? 0}\n${lines.join('\n') || '无能力数据'}`,
       result,
     );
   }
