@@ -3123,6 +3123,16 @@ export class TodoApiClient {
     }, 'getAgentWorkloadForecast');
   }
 
+  async getKnowledgePropagationNetwork(days = 90, limit = 20): Promise<any> {
+    logger.info('[API_CLIENT] Getting knowledge propagation network', { days, limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/knowledge-propagation-network', {
+        params: { days, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getKnowledgePropagationNetwork');
+  }
+
   /**
    * Test connection to the Todo API
    */

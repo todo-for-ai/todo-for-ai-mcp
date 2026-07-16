@@ -3658,6 +3658,17 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_knowledge_propagation_network',
+          description: 'Cross-Agent knowledge propagation network. Nodes are Agents sharing experiences, edges connect contributors weighted by reuse count. Reveals which Agents propagate knowledge most broadly.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window (1-365, default 90)' },
+              limit: { type: 'integer', description: 'Max nodes/edges (1-50, default 20)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -4984,6 +4995,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentWorkloadForecast(args);
             break;
 
+          case 'get_knowledge_propagation_network':
+            logger.info(`[MCP_SERVER] Executing get_knowledge_propagation_network`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetKnowledgePropagationNetwork(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5219,7 +5235,8 @@ export class TodoMcpServer {
                 'get_task_comment_sentiment_trend',
                 'get_agent_task_handoff_stats',
                 'get_channel_activity_trend',
-                'get_agent_workload_forecast'
+                'get_agent_workload_forecast',
+                'get_knowledge_propagation_network'
               ]
             });
             throw error;
@@ -8072,6 +8089,21 @@ export class TodoMcpServer {
     });
     return this.toToolResponse(
       `Agent工作负载预测(近${data.days ?? days}天, 预测${data.horizon ?? horizon}天):\n${lines.join('\n') || '无负载数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetKnowledgePropagationNetwork(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 90) || 90));
+    const limit = Math.max(1, Math.min(50, Number(args?.limit ?? 20) || 20));
+    const result = await this.apiClient.getKnowledgePropagationNetwork(days, limit);
+    const data = result?.data || result || {};
+    const nodes: any[] = data.nodes || [];
+    const lines = nodes.map((n: any) =>
+      `- ${n.agent_name}: 分享${n.shared_experiences}条 被复用${n.total_reuses}次 域[${(n.domains || []).join(',')}]`
+    );
+    return this.toToolResponse(
+      `知识传播网络(近${data.days ?? days}天, 共${data.total_shared_experiences ?? 0}条分享 累计复用${data.total_reuses ?? 0}):\n${lines.join('\n') || '无传播数据'}`,
       result,
     );
   }
