@@ -3724,6 +3724,17 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_agent_cross_project_efficiency',
+          description: 'Measure realized value of cross-project Agent authorizations. For each authorization into a project owned by the user, counts completed tasks in the host project within the window. Identifies utilized vs idle (unused) authorizations with a utilization rate.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window in days (1-365, default 30)' },
+              limit: { type: 'integer', description: 'Max authorizations (1-50, default 20)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -5080,6 +5091,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentExperiencesDecayAlerts(args);
             break;
 
+          case 'get_agent_cross_project_efficiency':
+            logger.info(`[MCP_SERVER] Executing get_agent_cross_project_efficiency`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetAgentCrossProjectEfficiency(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5321,7 +5337,8 @@ export class TodoMcpServer {
                 'get_protocol_decision_latency',
                 'get_task_rework_analysis',
                 'get_agent_specialization_evolution',
-                'get_agent_experiences_decay_alerts'
+                'get_agent_experiences_decay_alerts',
+                'get_agent_cross_project_efficiency'
               ]
             });
             throw error;
@@ -8264,6 +8281,21 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `经验置信度衰减告警(近${data.days ?? days}天, 阈值${data.min_drop ?? minDrop}): ${data.total_alerts ?? alerts.length} 条\n${lines.join('\n') || '无衰减告警'}`,
+      result,
+    );
+  }
+
+  private async handleGetAgentCrossProjectEfficiency(args: any) {
+    const days = Math.max(1, Math.min(365, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(50, Number(args?.limit ?? 20) || 20));
+    const result = await this.apiClient.getAgentCrossProjectEfficiency(days, limit);
+    const data = result?.data || result || {};
+    const auths: any[] = data.authorizations || [];
+    const lines = auths.map((a: any) =>
+      `- ${a.agent_name} → ${a.host_project_name}: 完成${a.tasks_completed_in_host}任务 ${a.utilized ? '' : '(闲置授权)'}`
+    );
+    return this.toToolResponse(
+      `跨项目借调效率(近${data.days ?? days}天): ${data.total_authorizations ?? auths.length}授权 活跃${data.active_count ?? 0} 已利用${data.utilized_count ?? 0} 闲置${data.idle_count ?? 0} 利用率${((data.utilization_rate ?? 0) * 100).toFixed(0)}%\n${lines.join('\n') || '无跨项目授权'}`,
       result,
     );
   }

@@ -3183,6 +3183,16 @@ export class TodoApiClient {
     }, 'getAgentExperiencesDecayAlerts');
   }
 
+  async getAgentCrossProjectEfficiency(days = 30, limit = 20): Promise<any> {
+    logger.info('[API_CLIENT] Getting agent cross-project efficiency', { days, limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/cross-project-efficiency', {
+        params: { days, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getAgentCrossProjectEfficiency');
+  }
+
   /**
    * Test connection to the Todo API
    */
