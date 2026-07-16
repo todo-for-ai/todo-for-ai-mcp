@@ -3133,6 +3133,16 @@ export class TodoApiClient {
     }, 'getKnowledgePropagationNetwork');
   }
 
+  async getWorkflowStepBottleneckTimeline(days = 30, limit = 8): Promise<any> {
+    logger.info('[API_CLIENT] Getting workflow step bottleneck timeline', { days, limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/step-bottleneck-timeline', {
+        params: { days, limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowStepBottleneckTimeline');
+  }
+
   /**
    * Test connection to the Todo API
    */

@@ -3669,6 +3669,17 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_workflow_step_bottleneck_timeline',
+          description: 'Per-step daily average duration timeline. Tracks how each workflow step avg duration changes over time to spot regressions or improvements.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              days: { type: 'integer', description: 'Lookback window (7-90, default 30)' },
+              limit: { type: 'integer', description: 'Max step keys (1-15, default 8)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -5000,6 +5011,11 @@ export class TodoMcpServer {
             result = await this.handleGetKnowledgePropagationNetwork(args);
             break;
 
+          case 'get_workflow_step_bottleneck_timeline':
+            logger.info(`[MCP_SERVER] Executing get_workflow_step_bottleneck_timeline`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowStepBottleneckTimeline(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5236,7 +5252,8 @@ export class TodoMcpServer {
                 'get_agent_task_handoff_stats',
                 'get_channel_activity_trend',
                 'get_agent_workload_forecast',
-                'get_knowledge_propagation_network'
+                'get_knowledge_propagation_network',
+                'get_workflow_step_bottleneck_timeline'
               ]
             });
             throw error;
@@ -8104,6 +8121,21 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `知识传播网络(近${data.days ?? days}天, 共${data.total_shared_experiences ?? 0}条分享 累计复用${data.total_reuses ?? 0}):\n${lines.join('\n') || '无传播数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowStepBottleneckTimeline(args: any) {
+    const days = Math.max(7, Math.min(90, Number(args?.days ?? 30) || 30));
+    const limit = Math.max(1, Math.min(15, Number(args?.limit ?? 8) || 8));
+    const result = await this.apiClient.getWorkflowStepBottleneckTimeline(days, limit);
+    const data = result?.data || result || {};
+    const steps: any[] = data.steps || [];
+    const lines = steps.map((s: any) =>
+      `• ${s.step_key}: 均${s.avg_duration}s 变化${s.change_pct > 0 ? '+' : ''}${s.change_pct}% (${s.sample_count}次)`
+    );
+    return this.toToolResponse(
+      `步骤瓶颈时序(近${data.days ?? days}天):\n${lines.join('\n') || '无时序数据'}`,
       result,
     );
   }
