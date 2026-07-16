@@ -3203,6 +3203,16 @@ export class TodoApiClient {
     }, 'getAgentCapabilitySupplyDemand');
   }
 
+  async getWorkflowStructuralComplexity(limit = 20): Promise<any> {
+    logger.info('[API_CLIENT] Getting workflow structural complexity', { limit });
+    return this.executeWithRetry(async () => {
+      const response = await this.client.get('agents/workflows/structural-complexity', {
+        params: { limit },
+      });
+      return this.unwrapApiData<any>(response.data);
+    }, 'getWorkflowStructuralComplexity');
+  }
+
   /**
    * Test connection to the Todo API
    */

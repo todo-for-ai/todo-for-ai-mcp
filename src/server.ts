@@ -3745,6 +3745,16 @@ export class TodoMcpServer {
             },
           },
         },
+        {
+          name: 'get_workflow_structural_complexity',
+          description: 'Analyze design-time structural complexity of active workflows. For each workflow computes DAG metrics from step dependencies: step count, max dependency depth (longest chain), total edges, average fan-in/fan-out, and root/leaf step counts. Reveals overly deep or tangled workflow designs.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              limit: { type: 'integer', description: 'Max workflows (1-50, default 20)' },
+            },
+          },
+        },
       ];
 
       logger.info(`Returning ${tools.length} available tools`);
@@ -5111,6 +5121,11 @@ export class TodoMcpServer {
             result = await this.handleGetAgentCapabilitySupplyDemand(args);
             break;
 
+          case 'get_workflow_structural_complexity':
+            logger.info(`[MCP_SERVER] Executing get_workflow_structural_complexity`, { requestId, instanceId: this.instanceId });
+            result = await this.handleGetWorkflowStructuralComplexity(args);
+            break;
+
           default:
             const error = new Error(`Unknown tool: ${name}`);
             logger.error(`[MCP_SERVER] Unknown tool requested`, {
@@ -5354,7 +5369,8 @@ export class TodoMcpServer {
                 'get_agent_specialization_evolution',
                 'get_agent_experiences_decay_alerts',
                 'get_agent_cross_project_efficiency',
-                'get_agent_capability_supply_demand'
+                'get_agent_capability_supply_demand',
+                'get_workflow_structural_complexity'
               ]
             });
             throw error;
@@ -8333,6 +8349,20 @@ export class TodoMcpServer {
     );
     return this.toToolResponse(
       `能力供需匹配: ${data.total_capabilities ?? caps.length}项 瓶颈/缺口${data.bottleneck_count ?? 0} Agent${data.agent_total ?? 0} 活跃任务${data.active_task_total ?? 0}\n${lines.join('\n') || '无能力数据'}`,
+      result,
+    );
+  }
+
+  private async handleGetWorkflowStructuralComplexity(args: any) {
+    const limit = Math.max(1, Math.min(50, Number(args?.limit ?? 20) || 20));
+    const result = await this.apiClient.getWorkflowStructuralComplexity(limit);
+    const data = result?.data || result || {};
+    const wfs: any[] = data.workflows || [];
+    const lines = wfs.map((w: any) =>
+      `- ${w.workflow_name} v${w.version}: ${w.step_count}步 深度${w.max_depth} 边${w.total_edges} 根${w.root_count}/叶${w.leaf_count}`
+    );
+    return this.toToolResponse(
+      `工作流结构复杂度: ${data.total_workflows ?? wfs.length}个 均步数${data.avg_steps ?? 0} 均深度${data.avg_depth ?? 0}\n${lines.join('\n') || '无活跃工作流'}`,
       result,
     );
   }
