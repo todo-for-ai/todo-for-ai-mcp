@@ -55,6 +55,18 @@ import { logger } from './logger.js';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import type { MethodHelpers } from './api-client/context.js';
+
+import * as taskMethods from './api-client/task-methods.js';
+import * as agentMethods from './api-client/agent-methods.js';
+import * as workflowMethods from './api-client/workflow-methods.js';
+import * as knowledgeMethods from './api-client/knowledge-methods.js';
+import * as messagingMethods from './api-client/messaging-methods.js';
+import * as sandboxMethods from './api-client/sandbox-methods.js';
+import * as conflictMethods from './api-client/conflict-methods.js';
+import * as orchestratorMethods from './api-client/orchestrator-methods.js';
+import * as protocolMethods from './api-client/protocol-methods.js';
+
 
 // Extend Axios config to include metadata
 declare module 'axios' {
@@ -346,2896 +358,967 @@ export class TodoApiClient {
   /**
    * Get all pending tasks for a project by project name
    */
+
+  /** Get the shared method context for domain method modules. */
+  private get _helpers(): MethodHelpers {
+    return {
+      client: this.client,
+      executeWithRetry: this.executeWithRetry.bind(this),
+      compactParams: this.compactParams.bind(this),
+      unwrapApiData: this.unwrapApiData.bind(this),
+      config: this.config,
+    };
+  }
   async getProjectTasksByName(args: GetProjectTasksArgs): Promise<any> {
-    logger.info(`Getting tasks for project: ${args.project_name}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post<any>('mcp/call', {
-        name: 'get_project_tasks_by_name',
-        arguments: {
-          project_name: args.project_name,
-          status_filter: args.status_filter || ['todo', 'in_progress', 'review'],
-        },
-      });
-
-      const result = response.data;
-
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      logger.info(`Found ${result.total_tasks || 0} tasks for project: ${args.project_name}`);
-      return result;
-    }, `getProjectTasksByName(${args.project_name})`);
+    return taskMethods.getProjectTasksByName(this._helpers, args);
   }
 
-  /**
-   * Get detailed task information by task ID
-   */
   async getTaskById(args: GetTaskByIdArgs): Promise<Task> {
-    logger.info(`Getting task details for ID: ${args.task_id}`);
-    
-    try {
-      const response = await this.client.post<Task>('mcp/call', {
-        name: 'get_task_by_id',
-        arguments: {
-          task_id: args.task_id,
-        },
-      });
-
-      const result = response.data;
-      
-      if ('error' in result) {
-        throw new Error((result as any).error);
-      }
-
-      logger.info(`Retrieved task: ${(result as Task).title}`);
-      return result as Task;
-    } catch (error) {
-      logger.error(`Failed to get task ${args.task_id}:`, error);
-      throw error;
-    }
+    return taskMethods.getTaskById(this._helpers, args);
   }
 
-  /**
-   * Submit feedback for a completed or in-progress task
-   */
   async submitTaskFeedback(args: SubmitTaskFeedbackArgs): Promise<any> {
-    logger.info(`Submitting feedback for task ${args.task_id} in project ${args.project_name}`);
-    
-    try {
-      const response = await this.client.post<any>('mcp/call', {
-        name: 'submit_task_feedback',
-        arguments: {
-          task_id: args.task_id,
-          project_name: args.project_name,
-          feedback_content: args.feedback_content,
-          status: args.status,
-          ai_identifier: args.ai_identifier || 'MCP Client',
-        },
-      });
-
-      const result = response.data;
-      
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      logger.info(`Successfully submitted feedback for task ${args.task_id}`);
-      return result;
-    } catch (error) {
-      logger.error(`Failed to submit feedback for task ${args.task_id}:`, error);
-      throw error;
-    }
+    return taskMethods.submitTaskFeedback(this._helpers, args);
   }
 
-  /**
-   * Create a new task in the specified project
-   */
   async createTask(args: CreateTaskArgs): Promise<Task> {
-    logger.info(`Creating task "${args.title}" in project ${args.project_id}`);
-
-    try {
-      const response = await this.client.post<Task>('mcp/call', {
-        name: 'create_task',
-        arguments: {
-          project_id: args.project_id,
-          title: args.title,
-          content: args.content,
-          status: args.status || 'todo',
-          priority: args.priority || 'medium',
-          assignee: args.assignee,
-          due_date: args.due_date,
-          estimated_hours: args.estimated_hours,
-          tags: args.tags,
-          related_files: args.related_files,
-          is_ai_task: args.is_ai_task !== undefined ? args.is_ai_task : true,
-          ai_identifier: args.ai_identifier || 'MCP Client',
-        },
-      });
-
-      const result = response.data;
-
-      if ('error' in result) {
-        throw new Error((result as any).error);
-      }
-
-      logger.info(`Successfully created task: ${(result as Task).title}`);
-      return result as Task;
-    } catch (error) {
-      logger.error(`Failed to create task "${args.title}":`, error);
-      throw error;
-    }
+    return taskMethods.createTask(this._helpers, args);
   }
 
-  /**
-   * Get detailed project information
-   */
   async getProjectInfo(args: GetProjectInfoArgs): Promise<Project> {
-    const apiCallStartTime = Date.now();
-    const apiCallId = `api-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-
-    logger.info('[API_CLIENT] ========== API CALL START: getProjectInfo ==========', {
-      apiCallId,
-      timestamp: new Date().toISOString(),
-      args
-    });
-
-    // Validate that at least one identifier is provided
-    if (!args.project_id && !args.project_name) {
-      const error = new Error('Either project_id or project_name must be provided');
-      logger.error('[API_CLIENT] getProjectInfo validation failed', {
-        apiCallId,
-        args,
-        error: error.message,
-        validationRule: 'project_id OR project_name required'
-      });
-      throw error;
-    }
-
-    const identifier = args.project_id ? `ID ${args.project_id}` : `name "${args.project_name}"`;
-    logger.info(`[API_CLIENT] getProjectInfo starting for ${identifier}`, {
-      apiCallId,
-      project_id: args.project_id,
-      project_name: args.project_name,
-      identifier,
-      hasToken: !!this.config.apiToken,
-      tokenPrefix: this.config.apiToken ? this.config.apiToken.substring(0, 8) + '...' : 'none',
-      baseURL: this.config.apiBaseUrl,
-      timeout: this.config.apiTimeout
-    });
-
-    try {
-      logger.debug('[API_CLIENT] Preparing MCP call request', {
-        apiCallId,
-        endpoint: 'mcp/call',
-        method: 'POST',
-        toolName: 'get_project_info',
-        arguments: args,
-        fullUrl: `${this.config.apiBaseUrl}/mcp/call`,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': this.config.apiToken ? 'Bearer ***' : 'none',
-          'User-Agent': this.client.defaults.headers['User-Agent']
-        }
-      });
-
-      const requestPayload = {
-        name: 'get_project_info',
-        arguments: {
-          project_id: args.project_id,
-          project_name: args.project_name,
-        },
-      };
-
-      logger.debug('[API_CLIENT] Request payload prepared', {
-        apiCallId,
-        payload: requestPayload,
-        payloadSize: JSON.stringify(requestPayload).length
-      });
-
-      const httpCallStartTime = Date.now();
-      logger.info('[API_CLIENT] Making HTTP request...', {
-        apiCallId,
-        url: '/mcp/call',
-        method: 'POST',
-        timestamp: new Date().toISOString()
-      });
-
-      const response = await this.client.post<Project>('mcp/call', requestPayload);
-      const httpCallDuration = Date.now() - httpCallStartTime;
-
-      logger.info('[API_CLIENT] HTTP response received', {
-        apiCallId,
-        httpCallDuration: `${httpCallDuration}ms`,
-        status: response.status,
-        statusText: response.statusText,
-        hasData: !!response.data,
-        dataType: typeof response.data,
-        dataSize: response.data ? JSON.stringify(response.data).length : 0,
-        headers: {
-          'content-type': response.headers['content-type'],
-          'content-length': response.headers['content-length']
-        }
-      });
-
-      logger.debug('[API_CLIENT] Response data details', {
-        apiCallId,
-        data: response.data,
-        dataKeys: response.data && typeof response.data === 'object' ? Object.keys(response.data) : []
-      });
-
-      const result = response.data;
-
-      logger.debug('[API_CLIENT] Checking for error in response', {
-        apiCallId,
-        hasError: 'error' in result,
-        resultType: typeof result,
-        resultKeys: result && typeof result === 'object' ? Object.keys(result) : []
-      });
-
-      if ('error' in result) {
-        const errorMsg = (result as any).error;
-        logger.error('[API_CLIENT] MCP call returned error', {
-          apiCallId,
-          error: errorMsg,
-          identifier,
-          fullResponse: result
-        });
-        throw new Error(errorMsg);
-      }
-
-      const project = result as Project;
-      const totalDuration = Date.now() - apiCallStartTime;
-
-      logger.info(`[API_CLIENT] getProjectInfo successful for ${identifier}`, {
-        apiCallId,
-        totalDuration: `${totalDuration}ms`,
-        projectName: project.name,
-        projectId: project.id,
-        projectStatus: project.status,
-        hasStats: !!project.statistics,
-        hasRecentTasks: !!(project as any).recent_tasks,
-        totalTasks: project.total_tasks,
-        completionRate: project.completion_rate
-      });
-
-      logger.info('[API_CLIENT] ========== API CALL END: getProjectInfo ==========', {
-        apiCallId,
-        success: true,
-        totalDuration: `${totalDuration}ms`,
-        timestamp: new Date().toISOString()
-      });
-
-      return project;
-    } catch (error) {
-      const totalDuration = Date.now() - apiCallStartTime;
-
-      logger.error(`[API_CLIENT] getProjectInfo failed for ${identifier}`, {
-        apiCallId,
-        totalDuration: `${totalDuration}ms`,
-        error: error instanceof Error ? error.message : String(error),
-        errorType: error instanceof Error ? error.constructor.name : typeof error,
-        stack: error instanceof Error ? error.stack : undefined,
-        args,
-        config: {
-          baseURL: this.config.apiBaseUrl,
-          timeout: this.config.apiTimeout,
-          hasToken: !!this.config.apiToken
-        }
-      });
-
-      logger.error('[API_CLIENT] ========== API CALL END: getProjectInfo (ERROR) ==========', {
-        apiCallId,
-        success: false,
-        totalDuration: `${totalDuration}ms`,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        timestamp: new Date().toISOString()
-      });
-
-      throw error;
-    }
+    return taskMethods.getProjectInfo(this._helpers, args);
   }
 
-  /**
-   * List Agent identities owned by the current API token user.
-   */
   async listAgents(args: ListAgentsArgs): Promise<ListResult<Agent>> {
-    logger.info('[API_CLIENT] Listing agents', args);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents', {
-        params: this.compactParams({
-          status: args.status,
-          search: args.search,
-          page: args.page,
-          per_page: args.per_page,
-        }),
-      });
-
-      return this.unwrapApiData<ListResult<Agent>>(response.data);
-    }, 'listAgents');
+    return agentMethods.listAgents(this._helpers, args);
   }
 
-  /**
-   * Create an Agent identity for the current API token user.
-   */
   async createAgent(args: CreateAgentArgs): Promise<Agent> {
-    logger.info('[API_CLIENT] Creating agent', {
-      name: args.name,
-      kind: args.kind,
-      status: args.status,
-      capabilityCount: args.capabilities?.length || 0,
-    });
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents', this.compactParams({
-        name: args.name,
-        description: args.description,
-        kind: args.kind,
-        status: args.status,
-        provider: args.provider,
-        model: args.model,
-        capabilities: args.capabilities,
-        config: args.config,
-      }));
-
-      return this.unwrapApiData<Agent>(response.data);
-    }, 'createAgent');
+    return agentMethods.createAgent(this._helpers, args);
   }
 
-  /**
-   * Self-register an Agent (idempotent by name+provider).
-   */
   async selfRegisterAgent(args: { name: string; description?: string; kind?: string; provider?: string; model?: string; capabilities?: string[]; config?: Record<string, unknown>; collaboration_role?: string }): Promise<Agent> {
-    logger.info(`[API_CLIENT] Self-registering agent "${args.name}"`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/self-register', this.compactParams(args));
-      return this.unwrapApiData<Agent>(response.data);
-    }, `selfRegisterAgent("${args.name}")`);
+    return agentMethods.selfRegisterAgent(this._helpers, args);
   }
 
-  /**
-   * Discover available Agents by capability, role, or kind.
-   */
   async discoverAgents(args?: { capability?: string[]; collaboration_role?: string; kind?: string; status?: string }): Promise<Agent[]> {
-    logger.info(`[API_CLIENT] Discovering agents`);
-
-    return this.executeWithRetry(async () => {
-      const params: Record<string, any> = {};
-      if (args?.capability) params.capability = args.capability;
-      if (args?.collaboration_role) params.collaboration_role = args.collaboration_role;
-      if (args?.kind) params.kind = args.kind;
-      if (args?.status) params.status = args.status;
-      const response = await this.client.get('agents/discover', { params });
-      return this.unwrapApiData<Agent[]>(response.data);
-    }, 'discoverAgents');
+    return agentMethods.discoverAgents(this._helpers, args);
   }
 
-  /**
-   * Update an existing Agent identity.
-   */
   async updateAgent(args: UpdateAgentArgs): Promise<Agent> {
-    logger.info(`[API_CLIENT] Updating agent ${args.agent_id}`, {
-      name: args.name,
-      kind: args.kind,
-      status: args.status,
-      capabilityCount: args.capabilities?.length,
-    });
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.put(`agents/${args.agent_id}`, this.compactParams({
-        name: args.name,
-        description: args.description,
-        kind: args.kind,
-        status: args.status,
-        provider: args.provider,
-        model: args.model,
-        capabilities: args.capabilities,
-        config: args.config,
-      }));
-
-      return this.unwrapApiData<Agent>(response.data);
-    }, `updateAgent(${args.agent_id})`);
+    return agentMethods.updateAgent(this._helpers, args);
   }
 
-  /**
-   * List Agent assignments that need human attention.
-   */
   async listReviewQueue(args: ListReviewQueueArgs): Promise<ListResult<ReviewQueueItem>> {
-    logger.info('[API_CLIENT] Listing Agent review queue', args);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/review-queue', {
-        params: this.compactParams({
-          action: args.action,
-          page: args.page,
-          per_page: args.per_page,
-        }),
-      });
-
-      return this.unwrapApiData<ListResult<ReviewQueueItem>>(response.data);
-    }, 'listReviewQueue');
+    return taskMethods.listReviewQueue(this._helpers, args);
   }
 
-  /**
-   * Record an Agent heartbeat.
-   */
   async heartbeatAgent(args: HeartbeatAgentArgs): Promise<Agent> {
-    logger.info(`[API_CLIENT] Recording heartbeat for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${args.agent_id}/heartbeat`, this.compactParams({
-        status: args.status,
-      }));
-
-      return this.unwrapApiData<Agent>(response.data);
-    }, `heartbeatAgent(${args.agent_id})`);
+    return agentMethods.heartbeatAgent(this._helpers, args);
   }
 
-  /**
-   * List recommended tasks for an Agent based on capability matching.
-   */
   async listRecommendedTasks(args: { agent_id: number; limit?: number; project_id?: number }): Promise<any[]> {
-    logger.info(`[API_CLIENT] Listing recommended tasks for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const params: Record<string, any> = {};
-      if (args.limit) params.limit = args.limit;
-      if (args.project_id) params.project_id = args.project_id;
-      const response = await this.client.get(`agents/${args.agent_id}/recommended-tasks`, { params });
-      return this.unwrapApiData<any[]>(response.data);
-    }, `listRecommendedTasks(${args.agent_id})`);
+    return agentMethods.listRecommendedTasks(this._helpers, args);
   }
 
-  /**
-   * List task assignments for an Agent.
-   */
   async listAgentAssignments(args: ListAgentAssignmentsArgs): Promise<ListResult<TaskAssignment>> {
-    logger.info(`[API_CLIENT] Listing assignments for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${args.agent_id}/assignments`, {
-        params: this.compactParams({
-          state: args.state,
-          page: args.page,
-          per_page: args.per_page,
-        }),
-      });
-
-      return this.unwrapApiData<ListResult<TaskAssignment>>(response.data);
-    }, `listAgentAssignments(${args.agent_id})`);
+    return agentMethods.listAgentAssignments(this._helpers, args);
   }
 
-  /**
-   * List Agent assignments for a task.
-   */
   async listTaskAssignments(args: ListTaskAssignmentsArgs): Promise<ListResult<TaskAssignment>> {
-    logger.info(`[API_CLIENT] Listing assignments for task ${args.task_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/tasks/${args.task_id}/assignments`, {
-        params: this.compactParams({
-          state: args.state,
-          page: args.page,
-          per_page: args.per_page,
-        }),
-      });
-
-      return this.unwrapApiData<ListResult<TaskAssignment>>(response.data);
-    }, `listTaskAssignments(${args.task_id})`);
+    return taskMethods.listTaskAssignments(this._helpers, args);
   }
 
-  /**
-   * List collaboration events for a task.
-   */
   async listTaskEvents(args: ListTaskEventsArgs): Promise<ListResult<TaskEvent>> {
-    logger.info(`[API_CLIENT] Listing collaboration events for task ${args.task_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/tasks/${args.task_id}/events`, {
-        params: this.compactParams({
-          page: args.page,
-          per_page: args.per_page,
-        }),
-      });
-
-      return this.unwrapApiData<ListResult<TaskEvent>>(response.data);
-    }, `listTaskEvents(${args.task_id})`);
+    return taskMethods.listTaskEvents(this._helpers, args);
   }
 
-  /**
-   * Post a collaboration message to a task timeline as a human or an Agent.
-   */
   async postTaskEvent(args: PostTaskEventArgs): Promise<TaskEvent> {
-    logger.info(`[API_CLIENT] Posting collaboration event for task ${args.task_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/tasks/${args.task_id}/events`, this.compactParams({
-        event_type: args.event_type,
-        content: args.content,
-        agent_id: args.agent_id,
-        to_agent_id: args.to_agent_id,
-        payload: args.payload,
-      }));
-
-      return this.unwrapApiData<TaskEvent>(response.data);
-    }, `postTaskEvent(${args.task_id})`);
+    return taskMethods.postTaskEvent(this._helpers, args);
   }
 
-  /**
-   * Retrieve collaboration events directed at a specific Agent (its @mention inbox).
-   */
   async getAgentInbox(args: GetAgentInboxArgs): Promise<AgentInboxResult> {
-    logger.info(`[API_CLIENT] Fetching inbox for agent ${args.agent_id}`, {
-      sinceId: args.since_id,
-    });
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({
-        since_id: args.since_id,
-        per_page: args.per_page,
-        include_self: args.include_self,
-      });
-      const response = await this.client.get(`agents/${args.agent_id}/inbox`, { params });
-
-      return this.unwrapApiData<AgentInboxResult>(response.data);
-    }, `getAgentInbox(${args.agent_id})`);
+    return agentMethods.getAgentInbox(this._helpers, args);
   }
 
-  /**
-   * Hand off a task from its current Agent to another Agent.
-   */
   async handoffTask(args: HandoffTaskArgs): Promise<HandoffTaskResult> {
-    logger.info(`[API_CLIENT] Handing off task ${args.task_id} to agent ${args.to_agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/tasks/${args.task_id}/handoff`, this.compactParams({
-        to_agent_id: args.to_agent_id,
-        from_assignment_id: args.from_assignment_id,
-        lease_seconds: args.lease_seconds,
-        reason: args.reason,
-        notes: args.notes,
-      }));
-
-      return this.unwrapApiData<HandoffTaskResult>(response.data);
-    }, `handoffTask(${args.task_id})`);
+    return taskMethods.handoffTask(this._helpers, args);
   }
 
-  /**
-   * Coordinator auto-dispatch: assign claimable tasks to suitable worker Agents.
-   */
   async dispatchTasks(args: DispatchTasksArgs): Promise<DispatchTasksResult> {
-    logger.info(`[API_CLIENT] Coordinator ${args.agent_id} dispatching tasks`, {
-      projectId: args.project_id,
-      maxAssignments: args.max_assignments,
-    });
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${args.agent_id}/dispatch`, this.compactParams({
-        project_id: args.project_id,
-        max_assignments: args.max_assignments,
-        lease_seconds: args.lease_seconds,
-        match_capabilities: args.match_capabilities,
-        require_capability_match: args.require_capability_match,
-        candidate_agent_ids: args.candidate_agent_ids,
-        include_self: args.include_self,
-      }));
-
-      return this.unwrapApiData<DispatchTasksResult>(response.data);
-    }, `dispatchTasks(${args.agent_id})`);
+    return taskMethods.dispatchTasks(this._helpers, args);
   }
 
-  /**
-   * Create a child task under a parent task (Agent-driven task decomposition).
-   */
   async createSubtask(args: CreateSubtaskArgs): Promise<any> {
-    logger.info(`[API_CLIENT] Creating subtask under task ${args.task_id}`, {
-      title: args.title,
-    });
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/tasks/${args.task_id}/subtasks`, this.compactParams({
-        title: args.title,
-        content: args.content,
-        priority: args.priority,
-        tags: args.tags,
-        agent_id: args.agent_id,
-      }));
-
-      return this.unwrapApiData(response.data);
-    }, `createSubtask(${args.task_id})`);
+    return taskMethods.createSubtask(this._helpers, args);
   }
 
-  /**
-   * Claim a specific task or the next claimable task for an Agent.
-   */
   async claimAgentTask(args: ClaimAgentTaskArgs): Promise<ClaimAgentTaskResult | null> {
-    logger.info(`[API_CLIENT] Claiming task for agent ${args.agent_id}`, {
-      taskId: args.task_id,
-      projectId: args.project_id,
-    });
-
-    return this.executeWithRetry(async () => {
-      const runMetadata = {
-        ...(args.run_metadata || {}),
-        ...(args.dispatch_notes ? { dispatch_notes: args.dispatch_notes } : {}),
-      };
-      const response = await this.client.post(`agents/${args.agent_id}/claim`, this.compactParams({
-        task_id: args.task_id,
-        project_id: args.project_id,
-        lease_seconds: args.lease_seconds,
-        match_capabilities: args.match_capabilities,
-        dispatch_source: args.dispatch_source,
-        run_metadata: Object.keys(runMetadata).length > 0 ? runMetadata : undefined,
-      }));
-
-      return this.unwrapApiData<ClaimAgentTaskResult | null>(response.data);
-    }, `claimAgentTask(${args.agent_id})`);
+    return agentMethods.claimAgentTask(this._helpers, args);
   }
 
-  /**
-   * Update an Agent task assignment state or progress.
-   */
   async updateAgentAssignment(args: UpdateAgentAssignmentArgs): Promise<{ assignment: TaskAssignment; run: AgentRun | null }> {
-    logger.info(`[API_CLIENT] Updating assignment ${args.assignment_id} for agent ${args.agent_id}`, {
-      state: args.state,
-      progressRate: args.progress_rate,
-    });
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.put(
-        `agents/${args.agent_id}/assignments/${args.assignment_id}`,
-        this.compactParams({
-          state: args.state,
-          progress_rate: args.progress_rate,
-          notes: args.notes,
-          feedback_content: args.feedback_content,
-          output_summary: args.output_summary,
-          error: args.error,
-          lease_seconds: args.lease_seconds,
-          task_status: args.task_status,
-          run_metadata: args.run_metadata,
-        })
-      );
-
-      return this.unwrapApiData<{ assignment: TaskAssignment; run: AgentRun | null }>(response.data);
-    }, `updateAgentAssignment(${args.assignment_id})`);
+    return agentMethods.updateAgentAssignment(this._helpers, args);
   }
 
-  /**
-   * Update a task assignment as the current user or coordinator.
-   */
   async updateTaskAssignment(args: UpdateTaskAssignmentArgs): Promise<{ assignment: TaskAssignment; run: AgentRun | null }> {
-    logger.info(`[API_CLIENT] Updating assignment ${args.assignment_id} for task ${args.task_id}`, {
-      state: args.state,
-      progressRate: args.progress_rate,
-    });
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.put(
-        `agents/tasks/${args.task_id}/assignments/${args.assignment_id}`,
-        this.compactParams({
-          state: args.state,
-          progress_rate: args.progress_rate,
-          notes: args.notes,
-          feedback_content: args.feedback_content,
-          output_summary: args.output_summary,
-          error: args.error,
-          lease_seconds: args.lease_seconds,
-          task_status: args.task_status,
-          run_metadata: args.run_metadata,
-        })
-      );
-
-      return this.unwrapApiData<{ assignment: TaskAssignment; run: AgentRun | null }>(response.data);
-    }, `updateTaskAssignment(${args.assignment_id})`);
+    return taskMethods.updateTaskAssignment(this._helpers, args);
   }
 
-  /**
-   * List notifications for the current user.
-   */
   async listNotifications(args: ListNotificationsArgs): Promise<ListNotificationsResult> {
-    logger.info('[API_CLIENT] Listing notifications', {
-      sinceId: args.since_id,
-      unreadOnly: args.unread_only,
-    });
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/notifications', {
-        params: this.compactParams({
-          since_id: args.since_id,
-          unread_only: args.unread_only,
-          per_page: args.per_page,
-        }),
-      });
-
-      return this.unwrapApiData<ListNotificationsResult>(response.data);
-    }, 'listNotifications');
+    return messagingMethods.listNotifications(this._helpers, args);
   }
 
-  /**
-   * Mark notifications as read.
-   */
   async markNotificationsRead(args: MarkNotificationsReadArgs): Promise<{ marked_count: number }> {
-    logger.info('[API_CLIENT] Marking notifications as read', {
-      ids: args.ids,
-      all: args.all,
-    });
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/notifications/read', this.compactParams({
-        ids: args.ids,
-        all: args.all,
-      }));
-
-      return this.unwrapApiData<{ marked_count: number }>(response.data);
-    }, 'markNotificationsRead');
+    return messagingMethods.markNotificationsRead(this._helpers, args);
   }
 
-  /**
-   * Get shared context entries for a task.
-   */
   async getSharedContext(args: GetSharedContextArgs): Promise<SharedContextEntry[]> {
-    logger.info(`[API_CLIENT] Getting shared context for task ${args.task_id}`, {
-      key: args.key,
-    });
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({ key: args.key });
-      const response = await this.client.get(`agents/tasks/${args.task_id}/shared-context`, { params });
-
-      return this.unwrapApiData<SharedContextEntry[]>(response.data);
-    }, `getSharedContext(${args.task_id})`);
+    return taskMethods.getSharedContext(this._helpers, args);
   }
 
-  /**
-   * Create or update a shared context entry (upsert by task_id + key).
-   */
   async setSharedContext(args: SetSharedContextArgs): Promise<SharedContextEntry> {
-    logger.info(`[API_CLIENT] Setting shared context for task ${args.task_id}`, {
-      key: args.key,
-    });
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.put(`agents/tasks/${args.task_id}/shared-context`, this.compactParams({
-        key: args.key,
-        value: args.value,
-        agent_id: args.agent_id,
-      }));
-
-      return this.unwrapApiData<SharedContextEntry>(response.data);
-    }, `setSharedContext(${args.task_id})`);
+    return taskMethods.setSharedContext(this._helpers, args);
   }
 
-  /**
-   * Delete a shared context entry.
-   */
   async deleteSharedContext(args: DeleteSharedContextArgs): Promise<void> {
-    logger.info(`[API_CLIENT] Deleting shared context entry ${args.entry_id} for task ${args.task_id}`);
-
-    return this.executeWithRetry(async () => {
-      await this.client.delete(`agents/tasks/${args.task_id}/shared-context/${args.entry_id}`);
-    }, `deleteSharedContext(${args.entry_id})`);
+    return taskMethods.deleteSharedContext(this._helpers, args);
   }
 
-  /**
-   * Get log entries for a specific AgentRun.
-   */
   async getRunLogs(args: GetRunLogsArgs): Promise<GetRunLogsResult> {
-    logger.info(`[API_CLIENT] Getting run logs for run ${args.run_id}`, {
-      sinceId: args.since_id,
-      level: args.level,
-    });
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({
-        since_id: args.since_id,
-        level: args.level,
-        per_page: args.per_page,
-      });
-      const response = await this.client.get(`agents/runs/${args.run_id}/logs`, { params });
-
-      return this.unwrapApiData<GetRunLogsResult>(response.data);
-    }, `getRunLogs(${args.run_id})`);
+    return taskMethods.getRunLogs(this._helpers, args);
   }
 
-  /**
-   * Append log entries to a specific AgentRun.
-   */
   async appendRunLogs(args: AppendRunLogsArgs): Promise<RunLogEntry[]> {
-    logger.info(`[API_CLIENT] Appending ${args.entries.length} log entries to run ${args.run_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/runs/${args.run_id}/logs`, {
-        entries: args.entries,
-      });
-
-      return this.unwrapApiData<RunLogEntry[]>(response.data);
-    }, `appendRunLogs(${args.run_id})`);
+    return taskMethods.appendRunLogs(this._helpers, args);
   }
 
-  /**
-   * List task templates for the current user.
-   */
   async listTaskTemplates(): Promise<TaskTemplate[]> {
-    logger.info('[API_CLIENT] Listing task templates');
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/task-templates');
-      return this.unwrapApiData<TaskTemplate[]>(response.data);
-    }, 'listTaskTemplates');
+    return taskMethods.listTaskTemplates(this._helpers);
   }
 
-  /**
-   * Create a new task template.
-   */
   async createTaskTemplate(args: CreateTaskTemplateArgs): Promise<TaskTemplate> {
-    logger.info(`[API_CLIENT] Creating task template "${args.name}"`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/task-templates', this.compactParams({
-        name: args.name,
-        description: args.description,
-        title_template: args.title_template,
-        content_template: args.content_template,
-        priority: args.priority,
-        tags: args.tags,
-        is_ai_task: args.is_ai_task,
-        capabilities: args.capabilities,
-      }));
-
-      return this.unwrapApiData<TaskTemplate>(response.data);
-    }, `createTaskTemplate(${args.name})`);
+    return taskMethods.createTaskTemplate(this._helpers, args);
   }
 
-  /**
-   * Instantiate a task from a template.
-   */
   async instantiateTaskTemplate(args: InstantiateTaskTemplateArgs): Promise<any> {
-    logger.info(`[API_CLIENT] Instantiating template ${args.template_id} into project ${args.project_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/task-templates/${args.template_id}/instantiate`, this.compactParams({
-        project_id: args.project_id,
-        title: args.title,
-        content: args.content,
-      }));
-
-      return this.unwrapApiData(response.data);
-    }, `instantiateTaskTemplate(${args.template_id})`);
+    return taskMethods.instantiateTaskTemplate(this._helpers, args);
   }
 
-  /**
-   * List workflow definitions.
-   */
   async listWorkflows(args?: { is_active?: boolean; page?: number; per_page?: number }): Promise<ListResult<import('./types.js').WorkflowItem>> {
-    logger.info('[API_CLIENT] Listing workflows');
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows', {
-        params: this.compactParams(args || {}),
-      });
-      return this.unwrapApiData<ListResult<import('./types.js').WorkflowItem>>(response.data);
-    }, 'listWorkflows');
+    return workflowMethods.listWorkflows(this._helpers, args);
   }
 
-  /**
-   * Create a new workflow definition with steps.
-   */
   async createWorkflow(args: import('./types.js').CreateWorkflowArgs): Promise<import('./types.js').WorkflowItem> {
-    logger.info(`[API_CLIENT] Creating workflow "${args.name}"`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/workflows', this.compactParams({
-        name: args.name,
-        description: args.description,
-        definition: args.definition,
-        is_active: args.is_active,
-        steps: args.steps,
-      }));
-      return this.unwrapApiData<import('./types.js').WorkflowItem>(response.data);
-    }, `createWorkflow(${args.name})`);
+    return workflowMethods.createWorkflow(this._helpers, args);
   }
 
-  /**
-   * Get a single workflow definition.
-   */
   async getWorkflow(args: { workflow_id: number }): Promise<import('./types.js').WorkflowItem> {
-    logger.info(`[API_CLIENT] Getting workflow ${args.workflow_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/workflows/${args.workflow_id}`);
-      return this.unwrapApiData<import('./types.js').WorkflowItem>(response.data);
-    }, `getWorkflow(${args.workflow_id})`);
+    return workflowMethods.getWorkflow(this._helpers, args);
   }
 
-  /**
-   * Update a workflow definition.
-   */
   async updateWorkflow(args: import('./types.js').UpdateWorkflowArgs): Promise<import('./types.js').WorkflowItem> {
-    logger.info(`[API_CLIENT] Updating workflow ${args.workflow_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.put(`agents/workflows/${args.workflow_id}`, this.compactParams({
-        name: args.name,
-        description: args.description,
-        definition: args.definition,
-        is_active: args.is_active,
-        steps: args.steps,
-      }));
-      return this.unwrapApiData<import('./types.js').WorkflowItem>(response.data);
-    }, `updateWorkflow(${args.workflow_id})`);
+    return workflowMethods.updateWorkflow(this._helpers, args);
   }
 
-  /**
-   * Delete a workflow definition.
-   */
   async deleteWorkflow(args: { workflow_id: number }): Promise<void> {
-    logger.info(`[API_CLIENT] Deleting workflow ${args.workflow_id}`);
-
-    return this.executeWithRetry(async () => {
-      await this.client.delete(`agents/workflows/${args.workflow_id}`);
-    }, `deleteWorkflow(${args.workflow_id})`);
+    return workflowMethods.deleteWorkflow(this._helpers, args);
   }
 
-  /**
-   * Launch a new run of a workflow.
-   */
   async launchWorkflow(args: import('./types.js').LaunchWorkflowArgs): Promise<import('./types.js').WorkflowRunItem> {
-    logger.info(`[API_CLIENT] Launching workflow ${args.workflow_id} in project ${args.project_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/workflows/${args.workflow_id}/runs`, this.compactParams({
-        project_id: args.project_id,
-        root_task_id: args.root_task_id,
-        context: args.context,
-      }));
-      return this.unwrapApiData<import('./types.js').WorkflowRunItem>(response.data);
-    }, `launchWorkflow(${args.workflow_id})`);
+    return workflowMethods.launchWorkflow(this._helpers, args);
   }
 
-  /**
-   * List workflow runs.
-   */
   async listWorkflowRuns(args?: { workflow_id?: number; status?: string; page?: number; per_page?: number }): Promise<ListResult<import('./types.js').WorkflowRunItem>> {
-    logger.info('[API_CLIENT] Listing workflow runs');
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflow-runs', {
-        params: this.compactParams(args || {}),
-      });
-      return this.unwrapApiData<ListResult<import('./types.js').WorkflowRunItem>>(response.data);
-    }, 'listWorkflowRuns');
+    return workflowMethods.listWorkflowRuns(this._helpers, args);
   }
 
   async getWorkflowStepStats(args?: { limit?: number }): Promise<any> {
-    logger.info('[API_CLIENT] Getting workflow step stats');
-    const params: Record<string, string> = {};
-    if (args?.limit) params.limit = String(args.limit);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/step-stats', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowStepStats');
+    return workflowMethods.getWorkflowStepStats(this._helpers, args);
   }
 
   async getWorkflowRunDurationPercentiles(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow run duration percentiles (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/run-duration-percentiles', { params: { days } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowRunDurationPercentiles');
+    return workflowMethods.getWorkflowRunDurationPercentiles(this._helpers, days = 30);
   }
 
   async getWorkflowStepFailureRate(days = 30, limit = 15): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow step failure rate (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/step-failure-rate', { params: { days, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowStepFailureRate');
+    return workflowMethods.getWorkflowStepFailureRate(this._helpers, days = 30, limit = 15);
   }
 
   async getWorkflowStepCofailureMatrix(days = 30, limit = 8): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow step co-failure matrix (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/step-cofailure-matrix', { params: { days, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowStepCofailureMatrix');
+    return workflowMethods.getWorkflowStepCofailureMatrix(this._helpers, days = 30, limit = 8);
   }
 
   async getWorkflowStepRetryTopology(days = 30, limit = 15): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow step retry topology (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/step-retry-topology', { params: { days, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowStepRetryTopology');
+    return workflowMethods.getWorkflowStepRetryTopology(this._helpers, days = 30, limit = 15);
   }
 
   async getWorkflowStepHourlyDistribution(days = 30, limit = 10): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow step hourly distribution (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/step-hourly-distribution', { params: { days, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowStepHourlyDistribution');
+    return workflowMethods.getWorkflowStepHourlyDistribution(this._helpers, days = 30, limit = 10);
   }
 
   async getWorkflowStepDependencyBottleneck(days = 30, limit = 10): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow step dependency bottleneck (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/step-dependency-bottleneck', { params: { days, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowStepDependencyBottleneck');
+    return workflowMethods.getWorkflowStepDependencyBottleneck(this._helpers, days = 30, limit = 10);
   }
 
   async getAgentCapabilityGapAnalysis(limit = 10, minConfidence = 0.5): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent capability gap analysis (limit=${limit}, min_confidence=${minConfidence})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/capability-gap-analysis', { params: { limit, min_confidence: minConfidence } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentCapabilityGapAnalysis');
+    return agentMethods.getAgentCapabilityGapAnalysis(this._helpers, limit = 10, minConfidence = 0.5);
   }
 
   async getCollaborationGraphTimeline(days = 14, bucket = 'day', limit = 50): Promise<any> {
-    logger.info(`[API_CLIENT] Getting collaboration graph timeline (days=${days}, bucket=${bucket}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/collaboration-graph-timeline', { params: { days, bucket, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getCollaborationGraphTimeline');
+    return messagingMethods.getCollaborationGraphTimeline(this._helpers, days = 14, bucket = 'day', limit = 50);
   }
 
   async getTaskAllocationFairness(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting task allocation fairness (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/task-allocation-fairness', { params: { days } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskAllocationFairness');
+    return taskMethods.getTaskAllocationFairness(this._helpers, days = 30);
   }
 
   async getWorkflowSimilarityMatrix(days = 30, limit = 5, maxRuns = 20): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow similarity matrix (days=${days}, limit=${limit}, max_runs=${maxRuns})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/similarity-matrix', { params: { days, limit, max_runs: maxRuns } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowSimilarityMatrix');
+    return workflowMethods.getWorkflowSimilarityMatrix(this._helpers, days = 30, limit = 5, maxRuns = 20);
   }
 
   async getAgentRunResourceTrend(days = 14, limit = 10): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent run resource trend (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/run-resource-trend', { params: { days, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentRunResourceTrend');
+    return agentMethods.getAgentRunResourceTrend(this._helpers, days = 14, limit = 10);
   }
 
   async getWorkflowFailedStepsByDuration(args?: { days?: number; limit?: number }): Promise<any> {
-    logger.info('[API_CLIENT] Getting workflow failed steps by duration');
-    const params: Record<string, string> = {};
-    if (args?.days) params.days = String(args.days);
-    if (args?.limit) params.limit = String(args.limit);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/failed-steps/by-duration', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowFailedStepsByDuration');
+    return workflowMethods.getWorkflowFailedStepsByDuration(this._helpers, args);
   }
 
   async getWorkflowRunTrend(args?: { days?: number }): Promise<any> {
-    logger.info('[API_CLIENT] Getting workflow run trend');
-    const params: Record<string, string> = {};
-    if (args?.days) params.days = String(args.days);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/run-trend', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowRunTrend');
+    return workflowMethods.getWorkflowRunTrend(this._helpers, args);
   }
 
   async getWorkflowSuccessRateByWorkflow(args?: { days?: number; limit?: number }): Promise<any> {
-    logger.info('[API_CLIENT] Getting workflow success rate by workflow');
-    const params: Record<string, string> = {};
-    if (args?.days) params.days = String(args.days);
-    if (args?.limit) params.limit = String(args.limit);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/success-rate-by-workflow', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowSuccessRateByWorkflow');
+    return workflowMethods.getWorkflowSuccessRateByWorkflow(this._helpers, args);
   }
 
-  /**
-   * Get a single workflow run.
-   */
   async getWorkflowRun(args: { run_id: number }): Promise<import('./types.js').WorkflowRunItem> {
-    logger.info(`[API_CLIENT] Getting workflow run ${args.run_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/workflow-runs/${args.run_id}`);
-      return this.unwrapApiData<import('./types.js').WorkflowRunItem>(response.data);
-    }, `getWorkflowRun(${args.run_id})`);
+    return workflowMethods.getWorkflowRun(this._helpers, args);
   }
 
-  /**
-   * Step-level real-time console for a workflow run: aggregates step runs with
-   * sandbox executions, effective params, recent logs, and conflicts.
-   */
   async getWorkflowRunConsole(args: { run_id: number; log_limit?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow run console ${args.run_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/workflow-runs/${args.run_id}/console`, {
-        params: this.compactParams({
-          log_limit: args.log_limit,
-        }),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, `getWorkflowRunConsole(${args.run_id})`);
+    return workflowMethods.getWorkflowRunConsole(this._helpers, args);
   }
 
-  /**
-   * Cancel a running workflow.
-   */
   async cancelWorkflowRun(args: { run_id: number }): Promise<import('./types.js').WorkflowRunItem> {
-    logger.info(`[API_CLIENT] Cancelling workflow run ${args.run_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/workflow-runs/${args.run_id}/cancel`);
-      return this.unwrapApiData<import('./types.js').WorkflowRunItem>(response.data);
-    }, `cancelWorkflowRun(${args.run_id})`);
+    return workflowMethods.cancelWorkflowRun(this._helpers, args);
   }
 
-  /**
-   * Pause a running workflow. Running steps continue but no new steps start.
-   */
   async pauseWorkflowRun(args: { run_id: number }): Promise<import('./types.js').WorkflowRunItem> {
-    logger.info(`[API_CLIENT] Pausing workflow run ${args.run_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/workflow-runs/${args.run_id}/pause`);
-      return this.unwrapApiData<import('./types.js').WorkflowRunItem>(response.data);
-    }, `pauseWorkflowRun(${args.run_id})`);
+    return workflowMethods.pauseWorkflowRun(this._helpers, args);
   }
 
-  /**
-   * Resume a paused workflow. The DAG engine re-evaluates steps.
-   */
   async resumeWorkflowRun(args: { run_id: number }): Promise<import('./types.js').WorkflowRunItem> {
-    logger.info(`[API_CLIENT] Resuming workflow run ${args.run_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/workflow-runs/${args.run_id}/resume`);
-      return this.unwrapApiData<import('./types.js').WorkflowRunItem>(response.data);
-    }, `resumeWorkflowRun(${args.run_id})`);
+    return workflowMethods.resumeWorkflowRun(this._helpers, args);
   }
 
-  /**
-   * Retry a failed workflow by resetting failed/skipped steps.
-   */
   async retryWorkflowRun(args: { run_id: number }): Promise<import('./types.js').WorkflowRunItem> {
-    logger.info(`[API_CLIENT] Retrying workflow run ${args.run_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/workflow-runs/${args.run_id}/retry`);
-      return this.unwrapApiData<import('./types.js').WorkflowRunItem>(response.data);
-    }, `retryWorkflowRun(${args.run_id})`);
+    return workflowMethods.retryWorkflowRun(this._helpers, args);
   }
 
-  /**
-   * Mark a workflow step as completed (or failed) and advance the DAG.
-   */
   async completeWorkflowStep(args: import('./types.js').CompleteWorkflowStepArgs): Promise<import('./types.js').WorkflowRunItem> {
-    logger.info(`[API_CLIENT] Completing workflow step ${args.step_key} in run ${args.run_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(
-        `agents/workflow-runs/${args.run_id}/steps/${args.step_key}/complete`,
-        this.compactParams({
-          success: args.success,
-          error: args.error,
-        })
-      );
-      return this.unwrapApiData<import('./types.js').WorkflowRunItem>(response.data);
-    }, `completeWorkflowStep(${args.run_id}/${args.step_key})`);
+    return workflowMethods.completeWorkflowStep(this._helpers, args);
   }
 
-  /**
-   * Register capabilities for an Agent at runtime (merge or replace).
-   */
   async registerCapabilities(args: import('./types.js').RegisterCapabilitiesArgs): Promise<import('./types.js').Agent> {
-    logger.info(`[API_CLIENT] Registering capabilities for agent ${args.agent_id}`, {
-      capabilities: args.capabilities,
-      mode: args.mode,
-    });
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.put(`agents/${args.agent_id}`, this.compactParams({
-        capabilities: args.capabilities,
-        _capability_mode: args.mode || 'merge',
-      }));
-      return this.unwrapApiData<import('./types.js').Agent>(response.data);
-    }, `registerCapabilities(${args.agent_id})`);
+    return taskMethods.registerCapabilities(this._helpers, args);
   }
 
-  /**
-   * Trigger priority escalation for overdue tasks.
-   */
   async escalateOverdueTasks(args?: { overdue_after_days?: number }): Promise<{ escalated_count: number; task_ids: number[] }> {
-    logger.info('[API_CLIENT] Escalating overdue tasks', args);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/maintenance/escalate-overdue', this.compactParams(args || {}));
-      return this.unwrapApiData<{ escalated_count: number; task_ids: number[] }>(response.data);
-    }, 'escalateOverdueTasks');
+    return taskMethods.escalateOverdueTasks(this._helpers, args);
   }
 
-  /**
-   * Query the immutable audit trail.
-   */
   async listAuditLogs(args?: { action?: string; resource_type?: string; resource_id?: number; actor_type?: string; actor_agent_id?: number; project_id?: number; page?: number; per_page?: number }): Promise<any> {
-    logger.info('[API_CLIENT] Listing audit logs', args);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/audit-logs', {
-        params: this.compactParams(args || {}),
-      });
-      return this.unwrapApiData(response.data);
-    }, 'listAuditLogs');
+    return agentMethods.listAuditLogs(this._helpers, args);
   }
 
-  /**
-   * Unified security event feed: sandbox violations + conflicts + security audit.
-   */
   async listSecurityEvents(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; until?: string; search?: string; page?: number; per_page?: number }): Promise<any> {
-    logger.info('[API_CLIENT] Listing security events', args);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/security/events', {
-        params: this.compactParams(args || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'listSecurityEvents');
+    return agentMethods.listSecurityEvents(this._helpers, args);
   }
 
-  /**
-   * Export the unified security event feed as CSV text (same filters as list).
-   */
   async exportSecurityEvents(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; until?: string; search?: string; format?: string }): Promise<string> {
-    logger.info('[API_CLIENT] Exporting security events', args);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/security/events/export', {
-        params: this.compactParams(args || {}),
-        responseType: 'text',
-        transformResponse: (data: any) => data,
-      });
-      // When responseType is text, axios returns the raw string in response.data.
-      return typeof response.data === 'string' ? response.data : String(response.data ?? '');
-    }, 'exportSecurityEvents');
+    return agentMethods.exportSecurityEvents(this._helpers, args);
   }
 
-  /**
-   * Daily aggregation of security events for trend visualization (same filters as list).
-   */
   async securityEventsDailyTrend(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; until?: string; search?: string }): Promise<any> {
-    logger.info('[API_CLIENT] Fetching security events daily trend', args);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/security/events/daily-trend', {
-        params: this.compactParams(args || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'securityEventsDailyTrend');
+    return agentMethods.securityEventsDailyTrend(this._helpers, args);
   }
 
-  /**
-   * Per-agent aggregation of security events for ranking (same filters as list).
-   */
   async securityEventsByAgent(args?: { agent_id?: number; workflow_run_id?: number; event_type?: string; severity?: string; since?: string; until?: string; search?: string }): Promise<any> {
-    logger.info('[API_CLIENT] Fetching security events by agent', args);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/security/events/by-agent', {
-        params: this.compactParams(args || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'securityEventsByAgent');
+    return agentMethods.securityEventsByAgent(this._helpers, args);
   }
 
-  /**
-   * Run a full platform health check.
-   */
   async healthCheck(): Promise<{ stale_agents: number; stale_agent_ids: number[]; expired_leases: number; escalated_tasks: number; escalated_task_ids: number[] }> {
-    logger.info('[API_CLIENT] Running health check');
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/maintenance/health-check');
-      return this.unwrapApiData<any>(response.data);
-    }, 'healthCheck');
+    return agentMethods.healthCheck(this._helpers);
   }
 
-  /**
-   * Send a broadcast message from one Agent to all other active Agents.
-   */
   async broadcastMessage(args: { agent_id: number; content: string; task_id?: number; event_type?: string; payload?: Record<string, unknown> }): Promise<{ recipient_count: number; recipient_agent_ids: number[] }> {
-    logger.info(`[API_CLIENT] Broadcasting message from agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${args.agent_id}/broadcast`, this.compactParams({
-        content: args.content,
-        task_id: args.task_id,
-        event_type: args.event_type,
-        payload: args.payload,
-      }));
-      return this.unwrapApiData<{ recipient_count: number; recipient_agent_ids: number[] }>(response.data);
-    }, `broadcastMessage(${args.agent_id})`);
+    return messagingMethods.broadcastMessage(this._helpers, args);
   }
 
   async collaborationMetrics(args?: { project_id?: number; days?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Fetching collaboration metrics`);
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({
-        project_id: args?.project_id,
-        days: args?.days,
-      });
-      const response = await this.client.get('agents/dashboard/metrics', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'collaborationMetrics');
+    return messagingMethods.collaborationMetrics(this._helpers, args);
   }
 
-  // Workflow Triggers
   async listWorkflowTriggers(args?: { workflow_id?: number; is_active?: boolean; page?: number; per_page?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Listing workflow triggers`);
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({
-        workflow_id: args?.workflow_id,
-        is_active: args?.is_active,
-        page: args?.page,
-        per_page: args?.per_page,
-      });
-      const response = await this.client.get('agents/workflow-triggers', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'listWorkflowTriggers');
+    return workflowMethods.listWorkflowTriggers(this._helpers, args);
   }
 
   async createWorkflowTrigger(args: { workflow_id: number; name: string; cron_expr?: string; one_shot_at?: string; is_active?: boolean; project_id?: number; root_task_id?: number; context_override?: Record<string, unknown> }): Promise<any> {
-    logger.info(`[API_CLIENT] Creating workflow trigger for workflow ${args.workflow_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/workflow-triggers', this.compactParams(args));
-      return this.unwrapApiData<any>(response.data);
-    }, `createWorkflowTrigger(${args.workflow_id})`);
+    return workflowMethods.createWorkflowTrigger(this._helpers, args);
   }
 
   async updateWorkflowTrigger(args: { trigger_id: number; name?: string; cron_expr?: string; one_shot_at?: string; is_active?: boolean; project_id?: number; root_task_id?: number; context_override?: Record<string, unknown> }): Promise<any> {
-    logger.info(`[API_CLIENT] Updating workflow trigger ${args.trigger_id}`);
-
-    return this.executeWithRetry(async () => {
-      const { trigger_id, ...body } = args;
-      const response = await this.client.put(`agents/workflow-triggers/${trigger_id}`, this.compactParams(body));
-      return this.unwrapApiData<any>(response.data);
-    }, `updateWorkflowTrigger(${args.trigger_id})`);
+    return workflowMethods.updateWorkflowTrigger(this._helpers, args);
   }
 
   async deleteWorkflowTrigger(triggerId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Deleting workflow trigger ${triggerId}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.delete(`agents/workflow-triggers/${triggerId}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `deleteWorkflowTrigger(${triggerId})`);
+    return workflowMethods.deleteWorkflowTrigger(this._helpers, triggerId);
   }
 
   async fireDueTriggers(): Promise<any> {
-    logger.info(`[API_CLIENT] Firing due workflow triggers`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/maintenance/fire-triggers');
-      return this.unwrapApiData<any>(response.data);
-    }, 'fireDueTriggers');
+    return taskMethods.fireDueTriggers(this._helpers);
   }
 
-  /**
-   * Scan agents and mark those whose last heartbeat exceeds threshold as OFFLINE.
-   */
   async markOfflineAgents(): Promise<{ marked_offline: number; agent_ids: number[] }> {
-    logger.info(`[API_CLIENT] Marking offline agents`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/maintenance/mark-offline-agents');
-      return this.unwrapApiData<{ marked_offline: number; agent_ids: number[] }>(response.data);
-    }, 'markOfflineAgents');
+    return agentMethods.markOfflineAgents(this._helpers);
   }
 
-  /**
-   * Scan running workflow steps and mark timed-out ones as FAILED.
-   */
   async timeoutWorkflowSteps(): Promise<{ timed_out: number; steps: Array<{ step_key: string; run_id: number; elapsed_seconds: number; timeout_seconds: number }> }> {
-    logger.info(`[API_CLIENT] Checking workflow step timeouts`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/maintenance/timeout-workflow-steps');
-      return this.unwrapApiData<any>(response.data);
-    }, 'timeoutWorkflowSteps');
+    return workflowMethods.timeoutWorkflowSteps(this._helpers);
   }
 
-  // Agent Direct Messaging
   async sendAgentMessage(args: { from_agent_id: number; to_agent_id: number; content: string; task_id?: number; message_type?: string; metadata?: Record<string, unknown> }): Promise<any> {
-    logger.info(`[API_CLIENT] Sending message from agent ${args.from_agent_id} to agent ${args.to_agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${args.from_agent_id}/message/${args.to_agent_id}`, this.compactParams({
-        content: args.content,
-        task_id: args.task_id,
-        message_type: args.message_type,
-        metadata: args.metadata,
-      }));
-      return this.unwrapApiData<any>(response.data);
-    }, `sendAgentMessage(${args.from_agent_id}->${args.to_agent_id})`);
+    return agentMethods.sendAgentMessage(this._helpers, args);
   }
 
   async getAgentMessages(args: { agent_id: number; page?: number; per_page?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting messages for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({
-        page: args.page,
-        per_page: args.per_page,
-      });
-      const response = await this.client.get(`agents/${args.agent_id}/messages`, { params });
-      return this.unwrapApiData<any>(response.data);
-    }, `getAgentMessages(${args.agent_id})`);
+    return agentMethods.getAgentMessages(this._helpers, args);
   }
 
   async getAgentCollaborators(args: { agent_id: number; limit?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting collaborators for agent ${args.agent_id}`);
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({ limit: args.limit });
-      const response = await this.client.get(`agents/${args.agent_id}/collaborators`, { params });
-      return this.unwrapApiData<any>(response.data);
-    }, `getAgentCollaborators(${args.agent_id})`);
+    return agentMethods.getAgentCollaborators(this._helpers, args);
   }
 
   async collaborationGraph(args?: { limit?: number }): Promise<any> {
-    logger.info('[API_CLIENT] Fetching collaboration graph');
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams(args || {});
-      const response = await this.client.get('agents/collaboration-graph', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'collaborationGraph');
+    return messagingMethods.collaborationGraph(this._helpers, args);
   }
 
-  // --- Collaboration Channels ---
   async listChannels(args?: { project_id?: number; task_id?: number }): Promise<any[]> {
-    logger.info(`[API_CLIENT] Listing collaboration channels`);
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({ project_id: args?.project_id, task_id: args?.task_id });
-      const response = await this.client.get('agents/channels', { params });
-      return this.unwrapApiData<any[]>(response.data);
-    }, 'listChannels');
+    return messagingMethods.listChannels(this._helpers, args);
   }
 
   async createChannel(args: { name: string; description?: string; project_id?: number; task_id?: number; agent_ids?: number[] }): Promise<any> {
-    logger.info(`[API_CLIENT] Creating channel "${args.name}"`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/channels', this.compactParams(args));
-      return this.unwrapApiData<any>(response.data);
-    }, `createChannel("${args.name}")`);
+    return messagingMethods.createChannel(this._helpers, args);
   }
 
   async sendChannelMessage(args: { channel_id: number; agent_id?: number; content: string; message_type?: string }): Promise<any> {
-    logger.info(`[API_CLIENT] Sending message to channel #${args.channel_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/channels/${args.channel_id}/messages`, this.compactParams(args));
-      return this.unwrapApiData<any>(response.data);
-    }, `sendChannelMessage(${args.channel_id})`);
+    return messagingMethods.sendChannelMessage(this._helpers, args);
   }
 
   async listChannelMessages(args: { channel_id: number; page?: number; per_page?: number }): Promise<any[]> {
-    logger.info(`[API_CLIENT] Listing messages in channel #${args.channel_id}`);
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({ page: args.page, per_page: args.per_page });
-      const response = await this.client.get(`agents/channels/${args.channel_id}/messages`, { params });
-      return this.unwrapApiData<any[]>(response.data);
-    }, `listChannelMessages(${args.channel_id})`);
+    return messagingMethods.listChannelMessages(this._helpers, args);
   }
 
-  // Workflow Templates
   async listWorkflowTemplates(args?: { category?: string }): Promise<any> {
-    logger.info(`[API_CLIENT] Listing workflow templates`);
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({ category: args?.category });
-      const response = await this.client.get('agents/workflow-templates', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'listWorkflowTemplates');
+    return workflowMethods.listWorkflowTemplates(this._helpers, args);
   }
 
   async getWorkflowTemplate(templateKey: string): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow template ${templateKey}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/workflow-templates/${templateKey}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getWorkflowTemplate(${templateKey})`);
+    return workflowMethods.getWorkflowTemplate(this._helpers, templateKey);
   }
 
   async instantiateWorkflowTemplate(args: { template_key: string; name?: string; project_id?: number; root_task_id?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Instantiating workflow template ${args.template_key}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/workflow-templates/${args.template_key}/instantiate`, this.compactParams(args));
-      return this.unwrapApiData<any>(response.data);
-    }, `instantiateWorkflowTemplate(${args.template_key})`);
+    return workflowMethods.instantiateWorkflowTemplate(this._helpers, args);
   }
 
-  // Collaboration Templates
   async listCollaborationTemplates(params?: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Listing collaboration templates`);
-
-    return this.executeWithRetry(async () => {
-      const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-      const response = await this.client.get(`agents/collaboration-templates${qs}`);
-      return this.unwrapApiData<any>(response.data);
-    }, 'listCollaborationTemplates');
+    return messagingMethods.listCollaborationTemplates(this._helpers, params);
   }
 
   async createCollaborationTemplate(args: { name: string; agent_specs: any[]; description?: string; category?: string; workflow_id?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Creating collaboration template ${args.name}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/collaboration-templates', args);
-      return this.unwrapApiData<any>(response.data);
-    }, `createCollaborationTemplate(${args.name})`);
+    return messagingMethods.createCollaborationTemplate(this._helpers, args);
   }
 
   async deleteCollaborationTemplate(templateId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Deleting collaboration template ${templateId}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.delete(`agents/collaboration-templates/${templateId}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `deleteCollaborationTemplate(${templateId})`);
+    return messagingMethods.deleteCollaborationTemplate(this._helpers, templateId);
   }
 
   async instantiateCollaborationTemplate(args: { template_key: string; project_id?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Instantiating collaboration template ${args.template_key}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/collaboration-templates/${args.template_key}/instantiate`, args);
-      return this.unwrapApiData<any>(response.data);
-    }, `instantiateCollaborationTemplate(${args.template_key})`);
+    return messagingMethods.instantiateCollaborationTemplate(this._helpers, args);
   }
 
-  // Knowledge Base
   async listKnowledgeEntries(args: { agent_id: number; domain?: string; entry_type?: string; tag?: string; search?: string; include_content?: boolean }): Promise<any> {
-    logger.info(`[API_CLIENT] Listing knowledge entries for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({
-        domain: args.domain,
-        entry_type: args.entry_type,
-        tag: args.tag,
-        search: args.search,
-        include_content: args.include_content,
-      });
-      const qs = Object.keys(params).length ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
-      const response = await this.client.get(`agents/${args.agent_id}/knowledge${qs}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `listKnowledgeEntries(${args.agent_id})`);
+    return knowledgeMethods.listKnowledgeEntries(this._helpers, args);
   }
 
   async createKnowledgeEntry(args: { agent_id: number; title: string; content: string; domain?: string; tags?: string[]; entry_type?: string; source_task_id?: number; confidence?: number; shared_with_project?: boolean; project_id?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Creating knowledge entry for agent ${args.agent_id}: ${args.title}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${args.agent_id}/knowledge`, args);
-      return this.unwrapApiData<any>(response.data);
-    }, `createKnowledgeEntry(${args.agent_id})`);
+    return knowledgeMethods.createKnowledgeEntry(this._helpers, args);
   }
 
   async getKnowledgeEntry(args: { agent_id: number; entry_id: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting knowledge entry ${args.entry_id} for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${args.agent_id}/knowledge/${args.entry_id}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getKnowledgeEntry(${args.entry_id})`);
+    return knowledgeMethods.getKnowledgeEntry(this._helpers, args);
   }
 
   async updateKnowledgeEntry(args: { agent_id: number; entry_id: number; title?: string; content?: string; domain?: string; tags?: string[]; confidence?: number; is_valid?: boolean; shared_with_project?: boolean }): Promise<any> {
-    logger.info(`[API_CLIENT] Updating knowledge entry ${args.entry_id} for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.put(`agents/${args.agent_id}/knowledge/${args.entry_id}`, args);
-      return this.unwrapApiData<any>(response.data);
-    }, `updateKnowledgeEntry(${args.entry_id})`);
+    return knowledgeMethods.updateKnowledgeEntry(this._helpers, args);
   }
 
   async deleteKnowledgeEntry(args: { agent_id: number; entry_id: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Deleting knowledge entry ${args.entry_id} for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.delete(`agents/${args.agent_id}/knowledge/${args.entry_id}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `deleteKnowledgeEntry(${args.entry_id})`);
+    return knowledgeMethods.deleteKnowledgeEntry(this._helpers, args);
   }
 
   async searchKnowledge(args: { agent_id: number; q?: string; domain?: string; tags?: string; entry_type?: string; limit?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Searching knowledge for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({
-        q: args.q,
-        domain: args.domain,
-        tags: args.tags,
-        entry_type: args.entry_type,
-        limit: args.limit,
-      });
-      const qs = Object.keys(params).length ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
-      const response = await this.client.get(`agents/${args.agent_id}/knowledge/search${qs}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `searchKnowledge(${args.agent_id})`);
+    return knowledgeMethods.searchKnowledge(this._helpers, args);
   }
 
   async listSharedKnowledge(args?: { domain?: string; entry_type?: string; search?: string }): Promise<any> {
-    logger.info(`[API_CLIENT] Listing shared knowledge`);
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams({
-        domain: args?.domain,
-        entry_type: args?.entry_type,
-        search: args?.search,
-      });
-      const qs = Object.keys(params).length ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
-      const response = await this.client.get(`agents/knowledge/shared${qs}`);
-      return this.unwrapApiData<any>(response.data);
-    }, 'listSharedKnowledge');
+    return knowledgeMethods.listSharedKnowledge(this._helpers, args);
   }
 
   async autoExtractKnowledge(args: { agent_id: number; limit?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Auto-extracting knowledge for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${args.agent_id}/knowledge/auto-extract`, args);
-      return this.unwrapApiData<any>(response.data);
-    }, `autoExtractKnowledge(${args.agent_id})`);
+    return knowledgeMethods.autoExtractKnowledge(this._helpers, args);
   }
 
-  // Workflow Version Management
   async listWorkflowVersions(args: { workflow_id: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Listing workflow versions for ${args.workflow_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/workflows/${args.workflow_id}/versions`);
-      return this.unwrapApiData<any>(response.data);
-    }, `listWorkflowVersions(${args.workflow_id})`);
+    return workflowMethods.listWorkflowVersions(this._helpers, args);
   }
 
   async getWorkflowVersion(args: { workflow_id: number; version_number: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow version ${args.version_number} for ${args.workflow_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/workflows/${args.workflow_id}/versions/${args.version_number}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getWorkflowVersion(${args.workflow_id}, v${args.version_number})`);
+    return workflowMethods.getWorkflowVersion(this._helpers, args);
   }
 
   async rollbackWorkflow(args: { workflow_id: number; version: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Rolling back workflow ${args.workflow_id} to version ${args.version}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/workflows/${args.workflow_id}/rollback`, args);
-      return this.unwrapApiData<any>(response.data);
-    }, `rollbackWorkflow(${args.workflow_id}, v${args.version})`);
+    return workflowMethods.rollbackWorkflow(this._helpers, args);
   }
 
   async diffWorkflowVersions(args: { workflow_id: number; v1: number; v2: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Diffing workflow versions v${args.v1} vs v${args.v2} for ${args.workflow_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/workflows/${args.workflow_id}/diff/${args.v1}/${args.v2}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `diffWorkflowVersions(${args.workflow_id})`);
+    return workflowMethods.diffWorkflowVersions(this._helpers, args);
   }
 
-  // Collaboration Protocols
   async listProtocols(args?: { project_id?: number; status?: string; protocol_type?: string; initiator_agent_id?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Listing collaboration protocols`);
-
-    return this.executeWithRetry(async () => {
-      const params = this.compactParams(args || {});
-      const qs = Object.keys(params).length ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
-      const response = await this.client.get(`agents/protocols${qs}`);
-      return this.unwrapApiData<any>(response.data);
-    }, 'listProtocols');
+    return protocolMethods.listProtocols(this._helpers, args);
   }
 
   async createProtocol(args: { protocol_type: string; title: string; initiator_agent_id: number; description?: string; channel_id?: number; project_id?: number; task_id?: number; config?: Record<string, unknown>; deadline?: string }): Promise<any> {
-    logger.info(`[API_CLIENT] Creating protocol: ${args.title}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/protocols', args);
-      return this.unwrapApiData<any>(response.data);
-    }, `createProtocol(${args.title})`);
+    return protocolMethods.createProtocol(this._helpers, args);
   }
 
   async getProtocol(args: { protocol_id: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting protocol ${args.protocol_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/protocols/${args.protocol_id}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getProtocol(${args.protocol_id})`);
+    return protocolMethods.getProtocol(this._helpers, args);
   }
 
   async respondToProtocol(args: { protocol_id: number; agent_id: number; message_type: string; content?: string; payload?: Record<string, unknown> }): Promise<any> {
-    logger.info(`[API_CLIENT] Responding to protocol ${args.protocol_id}: ${args.message_type}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/protocols/${args.protocol_id}/respond`, args);
-      return this.unwrapApiData<any>(response.data);
-    }, `respondToProtocol(${args.protocol_id})`);
+    return protocolMethods.respondToProtocol(this._helpers, args);
   }
 
   async resolveProtocol(args: { protocol_id: number; resolution: string; result?: Record<string, unknown> }): Promise<any> {
-    logger.info(`[API_CLIENT] Resolving protocol ${args.protocol_id}: ${args.resolution}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/protocols/${args.protocol_id}/resolve`, args);
-      return this.unwrapApiData<any>(response.data);
-    }, `resolveProtocol(${args.protocol_id})`);
+    return protocolMethods.resolveProtocol(this._helpers, args);
   }
 
-  // Agent Reputation
   async getAgentReputation(args: { agent_id: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting reputation for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${args.agent_id}/reputation`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getAgentReputation(${args.agent_id})`);
+    return agentMethods.getAgentReputation(this._helpers, args);
   }
 
   async listReputations(): Promise<any> {
-    logger.info(`[API_CLIENT] Listing reputations`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/reputations');
-      return this.unwrapApiData<any>(response.data);
-    }, 'listReputations');
+    return agentMethods.listReputations(this._helpers);
   }
 
   async recalculateReputation(args: { agent_id: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Recalculating reputation for agent ${args.agent_id}`);
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${args.agent_id}/reputation/recalculate`, {});
-      return this.unwrapApiData<any>(response.data);
-    }, `recalculateReputation(${args.agent_id})`);
+    return agentMethods.recalculateReputation(this._helpers, args);
   }
 
   async getAgentReputationHistory(args: { agent_id: number; limit?: number; since?: string; until?: string }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting reputation history for agent ${args.agent_id}`);
-
-    const params: Record<string, string> = {};
-    if (args.limit) params.limit = String(args.limit);
-    if (args.since) params.since = args.since;
-    if (args.until) params.until = args.until;
-
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${args.agent_id}/reputation/history`, { params });
-      return this.unwrapApiData<any>(response.data);
-    }, `getAgentReputationHistory(${args.agent_id})`);
+    return agentMethods.getAgentReputationHistory(this._helpers, args);
   }
 
-  // ---- Agent Experience (Collective Intelligence) ----
-
   async listAgentExperiences(agentId: number, params?: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Listing experiences for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${agentId}/experiences`, {
-        params: this.compactParams(params || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, `listAgentExperiences(${agentId})`);
+    return agentMethods.listAgentExperiences(this._helpers, agentId, params);
   }
 
   async createAgentExperience(agentId: number, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Creating experience for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${agentId}/experiences`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `createAgentExperience(${agentId})`);
+    return agentMethods.createAgentExperience(this._helpers, agentId, data);
   }
 
   async getAgentExperience(agentId: number, experienceId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Getting experience ${experienceId} for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${agentId}/experiences/${experienceId}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getAgentExperience(${agentId}, ${experienceId})`);
+    return agentMethods.getAgentExperience(this._helpers, agentId, experienceId);
   }
 
   async updateAgentExperience(agentId: number, experienceId: number, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Updating experience ${experienceId} for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.put(`agents/${agentId}/experiences/${experienceId}`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `updateAgentExperience(${agentId}, ${experienceId})`);
+    return agentMethods.updateAgentExperience(this._helpers, agentId, experienceId, data);
   }
 
   async deleteAgentExperience(agentId: number, experienceId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Deleting experience ${experienceId} for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.delete(`agents/${agentId}/experiences/${experienceId}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `deleteAgentExperience(${agentId}, ${experienceId})`);
+    return agentMethods.deleteAgentExperience(this._helpers, agentId, experienceId);
   }
 
   async recommendExperiences(agentId: number, params?: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Recommending experiences for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${agentId}/experiences/recommend`, {
-        params: this.compactParams(params || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, `recommendExperiences(${agentId})`);
+    return agentMethods.recommendExperiences(this._helpers, agentId, params);
   }
 
   async getExperiencesStats(): Promise<any> {
-    logger.info('[API_CLIENT] Getting experiences stats');
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/stats');
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesStats');
+    return agentMethods.getExperiencesStats(this._helpers);
   }
 
   async getTaskStats(): Promise<any> {
-    logger.info('[API_CLIENT] Getting task lifecycle stats');
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/stats');
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskStats');
+    return taskMethods.getTaskStats(this._helpers);
   }
 
   async getTaskOverdueTrend(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting task overdue trend (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/overdue-trend', { params: { days } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskOverdueTrend');
+    return taskMethods.getTaskOverdueTrend(this._helpers, days = 30);
   }
 
   async getTaskOverdueByAssignee(limit = 10): Promise<any> {
-    logger.info(`[API_CLIENT] Getting task overdue by assignee (limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/overdue-by-assignee', { params: { limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskOverdueByAssignee');
+    return taskMethods.getTaskOverdueByAssignee(this._helpers, limit = 10);
   }
 
   async getTaskOverdueClustering(limit = 15): Promise<any> {
-    logger.info(`[API_CLIENT] Getting task overdue clustering (limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/overdue-clustering', { params: { limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskOverdueClustering');
+    return taskMethods.getTaskOverdueClustering(this._helpers, limit = 15);
   }
 
   async getTaskCompletionByPriority(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting task completion by priority (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/completion-by-priority', { params: { days } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskCompletionByPriority');
+    return taskMethods.getTaskCompletionByPriority(this._helpers, days = 30);
   }
 
   async getTaskCompletionRateByProject(days = 30, limit = 10): Promise<any> {
-    logger.info(`[API_CLIENT] Getting task completion rate by project (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/completion-rate-by-project', { params: { days, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskCompletionRateByProject');
+    return taskMethods.getTaskCompletionRateByProject(this._helpers, days = 30, limit = 10);
   }
 
   async getTaskPriorityTrend(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting task priority trend (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/priority-trend', { params: { days } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskPriorityTrend');
+    return taskMethods.getTaskPriorityTrend(this._helpers, days = 30);
   }
 
   async getTaskCompletionForecast(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting task completion forecast (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/completion-forecast', { params: { days } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskCompletionForecast');
+    return taskMethods.getTaskCompletionForecast(this._helpers, days = 30);
   }
 
   async getTaskCompletionByProject(days = 30, limit = 8): Promise<any> {
-    logger.info(`[API_CLIENT] Getting task completion by project (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/completion-by-project', { params: { days, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskCompletionByProject');
+    return taskMethods.getTaskCompletionByProject(this._helpers, days = 30, limit = 8);
   }
 
   async getTaskCompletionByAssignee(days = 30, limit = 8): Promise<any> {
-    logger.info(`[API_CLIENT] Getting task completion by assignee (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/completion-by-assignee', { params: { days, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskCompletionByAssignee');
+    return taskMethods.getTaskCompletionByAssignee(this._helpers, days = 30, limit = 8);
   }
 
   async getWorkflowFailureCorrelation(days = 30, windowHours = 2): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow failure correlation (days=${days}, window=${windowHours}h)`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/failure-correlation', {
-        params: { days, window_hours: windowHours },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowFailureCorrelation');
+    return workflowMethods.getWorkflowFailureCorrelation(this._helpers, days = 30, windowHours = 2);
   }
 
   async getWorkflowFailureCorrelationByStep(days = 30, windowHours = 2): Promise<any> {
-    logger.info(`[API_CLIENT] Getting workflow failure correlation by step (days=${days}, window=${windowHours}h)`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/failure-correlation-by-step', {
-        params: { days, window_hours: windowHours },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowFailureCorrelationByStep');
+    return workflowMethods.getWorkflowFailureCorrelationByStep(this._helpers, days = 30, windowHours = 2);
   }
 
   async getAgentProductivity(days = 30, limit = 20): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent productivity (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/productivity', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentProductivity');
+    return agentMethods.getAgentProductivity(this._helpers, days = 30, limit = 20);
   }
 
   async getAgentRunResourceUsage(days = 30, limit = 10): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent run resource usage (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/run-resource-usage', { params: { days, limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentRunResourceUsage');
+    return agentMethods.getAgentRunResourceUsage(this._helpers, days = 30, limit = 10);
   }
 
   async getAgentProductivityTrend(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent productivity trend (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/productivity/trend', {
-        params: { days },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentProductivityTrend');
+    return agentMethods.getAgentProductivityTrend(this._helpers, days = 30);
   }
 
   async getAgentProductivityAlerts(params: { days?: number; min_completion_rate?: number; max_failure_rate?: number; min_assignments?: number } = {}): Promise<any> {
-    logger.info('[API_CLIENT] Getting agent productivity alerts');
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/productivity/alerts', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentProductivityAlerts');
+    return agentMethods.getAgentProductivityAlerts(this._helpers, params);
   }
 
   async getAgentProductivityByKind(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent productivity by-kind (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/productivity/by-kind', {
-        params: { days },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentProductivityByKind');
+    return agentMethods.getAgentProductivityByKind(this._helpers, days = 30);
   }
 
   async getAgentProductivityHourlyHeatmap(days = 30, limit = 15): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent productivity hourly heatmap (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/productivity/hourly-heatmap', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentProductivityHourlyHeatmap');
+    return agentMethods.getAgentProductivityHourlyHeatmap(this._helpers, days = 30, limit = 15);
   }
 
   async getAgentProductivityCalendarHeatmap(days = 90, limit = 10): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent productivity calendar heatmap (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/productivity/calendar-heatmap', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentProductivityCalendarHeatmap');
+    return agentMethods.getAgentProductivityCalendarHeatmap(this._helpers, days = 90, limit = 10);
   }
 
   async getAgentProductivityWeeklyComparison(limit = 10): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent productivity weekly comparison (limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/productivity/weekly-comparison', { params: { limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentProductivityWeeklyComparison');
+    return agentMethods.getAgentProductivityWeeklyComparison(this._helpers, limit = 10);
   }
 
   async getAgentFailureReasons(days = 30, limit = 15): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent failure reasons (days=${days}, limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/failure-reasons', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentFailureReasons');
+    return agentMethods.getAgentFailureReasons(this._helpers, days = 30, limit = 15);
   }
 
   async getAgentFailureErrorPatterns(days = 30, limit = 10, prefixLen = 40): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent failure error patterns (days=${days}, limit=${limit}, prefix=${prefixLen})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/failure-error-patterns', {
-        params: { days, limit, prefix_len: prefixLen },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentFailureErrorPatterns');
+    return agentMethods.getAgentFailureErrorPatterns(this._helpers, days = 30, limit = 10, prefixLen = 40);
   }
 
   async getConflictsSandboxCorrelation(days = 30, windowHours = 2): Promise<any> {
-    logger.info(`[API_CLIENT] Getting conflicts-sandbox correlation (days=${days}, window=${windowHours}h)`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/conflicts/sandbox-correlation', {
-        params: { days, window_hours: windowHours },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getConflictsSandboxCorrelation');
+    return sandboxMethods.getConflictsSandboxCorrelation(this._helpers, days = 30, windowHours = 2);
   }
 
   async getAgentHealth(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent composite health (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/health', { params: { days } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentHealth');
+    return agentMethods.getAgentHealth(this._helpers, days = 30);
   }
 
   async getAgentHealthTrend(days = 30, agentId?: number): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent health trend (days=${days}, agentId=${agentId ?? 'all'})`);
-    return this.executeWithRetry(async () => {
-      const params: any = { days };
-      if (agentId != null) params.agent_id = agentId;
-      const response = await this.client.get('agents/health/trend', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentHealthTrend');
+    return agentMethods.getAgentHealthTrend(this._helpers, days = 30, agentId);
   }
 
   async getAgentHealthStateTransitions(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting agent health state transitions (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/health/state-transitions', { params: { days } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentHealthStateTransitions');
+    return agentMethods.getAgentHealthStateTransitions(this._helpers, days = 30);
   }
 
   async getAgentHealthAlerts(params: { days?: number; min_health_score?: number; w_reputation?: number; w_completion?: number; w_conflict?: number; w_violation?: number } = {}): Promise<any> {
-    logger.info('[API_CLIENT] Getting agent health alerts');
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/health/alerts', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentHealthAlerts');
+    return agentMethods.getAgentHealthAlerts(this._helpers, params);
   }
 
   async getExperiencesLowConfidence(maxConfidence = 0.5, limit = 20): Promise<any> {
-    logger.info(`[API_CLIENT] Getting low-confidence experiences (max=${maxConfidence})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/low-confidence', {
-        params: { max_confidence: maxConfidence, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesLowConfidence');
+    return agentMethods.getExperiencesLowConfidence(this._helpers, maxConfidence = 0.5, limit = 20);
   }
 
   async getExperiencesScatter(limit = 200): Promise<any> {
-    logger.info('[API_CLIENT] Getting experiences scatter points');
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/scatter', {
-        params: { limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesScatter');
+    return agentMethods.getExperiencesScatter(this._helpers, limit = 200);
   }
 
   async getExperiencesReuseTrend(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting experiences reuse trend for ${days} days`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/reuse-trend', {
-        params: { days },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesReuseTrend');
+    return agentMethods.getExperiencesReuseTrend(this._helpers, days = 30);
   }
 
   async getExperiencesConfidenceDecayForecast(days = 30): Promise<any> {
-    logger.info(`[API_CLIENT] Getting experiences confidence decay forecast (days=${days})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/confidence-decay-forecast', { params: { days } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesConfidenceDecayForecast');
+    return agentMethods.getExperiencesConfidenceDecayForecast(this._helpers, days = 30);
   }
 
   async getExperiencesDecayByDomain(limit = 15): Promise<any> {
-    logger.info(`[API_CLIENT] Getting experiences decay by domain (limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/decay-by-domain', {
-        params: { limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesDecayByDomain');
+    return agentMethods.getExperiencesDecayByDomain(this._helpers, limit = 15);
   }
 
   async getExperiencesDecayByTaskType(limit = 15): Promise<any> {
-    logger.info(`[API_CLIENT] Getting experiences decay by task type (limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/decay-by-task-type', {
-        params: { limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesDecayByTaskType');
+    return agentMethods.getExperiencesDecayByTaskType(this._helpers, limit = 15);
   }
 
   async getExperiencesConfidenceDistribution(): Promise<any> {
-    logger.info('[API_CLIENT] Getting experiences confidence distribution');
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/confidence-distribution');
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesConfidenceDistribution');
+    return agentMethods.getExperiencesConfidenceDistribution(this._helpers);
   }
 
   async getExperiencesSourceDistribution(): Promise<any> {
-    logger.info('[API_CLIENT] Getting experiences source distribution');
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/source-distribution');
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesSourceDistribution');
+    return agentMethods.getExperiencesSourceDistribution(this._helpers);
   }
 
   async getExperiencesPropagationChain(limit = 10): Promise<any> {
-    logger.info(`[API_CLIENT] Getting experiences propagation chain (limit=${limit})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/propagation-chain', { params: { limit } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesPropagationChain');
+    return agentMethods.getExperiencesPropagationChain(this._helpers, limit = 10);
   }
 
   async getExperiencesSkillCoverageRadar(limit = 6, domains = 8): Promise<any> {
-    logger.info(`[API_CLIENT] Getting experiences skill coverage radar (limit=${limit}, domains=${domains})`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/skill-coverage-radar', { params: { limit, domains } });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getExperiencesSkillCoverageRadar');
+    return agentMethods.getExperiencesSkillCoverageRadar(this._helpers, limit = 6, domains = 8);
   }
 
   async shareAgentExperience(agentId: number, experienceId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Sharing experience ${experienceId} for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${agentId}/experiences/${experienceId}/share`, {});
-      return this.unwrapApiData<any>(response.data);
-    }, `shareAgentExperience(${agentId}, ${experienceId})`);
+    return agentMethods.shareAgentExperience(this._helpers, agentId, experienceId);
   }
 
   async learnFromExperience(agentId: number, experienceId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Agent ${agentId} learning from experience ${experienceId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${agentId}/experiences/${experienceId}/learn`, {});
-      return this.unwrapApiData<any>(response.data);
-    }, `learnFromExperience(${agentId}, ${experienceId})`);
+    return agentMethods.learnFromExperience(this._helpers, agentId, experienceId);
   }
 
   async listSharedExperiences(agentId: number, params?: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Listing shared experiences for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${agentId}/experiences/shared`, {
-        params: this.compactParams(params || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, `listSharedExperiences(${agentId})`);
+    return agentMethods.listSharedExperiences(this._helpers, agentId, params);
   }
 
   async autoExtractExperiences(agentId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Auto-extracting experiences for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${agentId}/experiences/auto-extract`, {});
-      return this.unwrapApiData<any>(response.data);
-    }, `autoExtractExperiences(${agentId})`);
+    return agentMethods.autoExtractExperiences(this._helpers, agentId);
   }
 
-  // ---- Cross-Project Agent Collaboration ----
-
   async authorizeCrossProjectAgent(args: { agent_id: number; project_id: number; role_in_project?: string; capabilities_override?: string[]; max_concurrent_tasks?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Authorizing agent ${args.agent_id} for project ${args.project_id}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/cross-project/authorize', args);
-      return this.unwrapApiData<any>(response.data);
-    }, `authorizeCrossProjectAgent(${args.agent_id}, ${args.project_id})`);
+    return agentMethods.authorizeCrossProjectAgent(this._helpers, args);
   }
 
   async revokeCrossProjectAgent(agentId: number, projectId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Revoking agent ${agentId} from project ${projectId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/cross-project/revoke', { agent_id: agentId, project_id: projectId });
-      return this.unwrapApiData<any>(response.data);
-    }, `revokeCrossProjectAgent(${agentId}, ${projectId})`);
+    return agentMethods.revokeCrossProjectAgent(this._helpers, agentId, projectId);
   }
 
   async listAgentCrossProjects(agentId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Listing cross-project access for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${agentId}/cross-project`);
-      return this.unwrapApiData<any>(response.data);
-    }, `listAgentCrossProjects(${agentId})`);
+    return agentMethods.listAgentCrossProjects(this._helpers, agentId);
   }
 
   async listProjectExternalAgents(projectId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Listing external agents for project ${projectId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/projects/${projectId}/external-agents`);
-      return this.unwrapApiData<any>(response.data);
-    }, `listProjectExternalAgents(${projectId})`);
+    return agentMethods.listProjectExternalAgents(this._helpers, projectId);
   }
 
   async discoverCrossProjectAgents(params?: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Discovering cross-project agents`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/cross-project/discover-agents', {
-        params: this.compactParams(params || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'discoverCrossProjectAgents');
+    return agentMethods.discoverCrossProjectAgents(this._helpers, params);
   }
 
   async findCapableAgentsCrossProject(params: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Finding capable agents cross-project with capabilities: ${params.capabilities}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/cross-project/capable-agents', {
-        params: this.compactParams(params),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, `findCapableAgentsCrossProject(${params.capabilities})`);
+    return agentMethods.findCapableAgentsCrossProject(this._helpers, params);
   }
 
-  // ---- Experience Decay & Validation ----
-
   async applyExperienceDecay(agentId: number, params?: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Applying experience decay for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${agentId}/experiences/decay`, params || {});
-      return this.unwrapApiData<any>(response.data);
-    }, `applyExperienceDecay(${agentId})`);
+    return agentMethods.applyExperienceDecay(this._helpers, agentId, params);
   }
 
   async validateExperience(agentId: number, experienceId: number, data: { is_accurate: boolean }): Promise<any> {
-    logger.info(`[API_CLIENT] Validating experience ${experienceId} by agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${agentId}/experiences/${experienceId}/validate`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `validateExperience(${agentId}, ${experienceId})`);
+    return agentMethods.validateExperience(this._helpers, agentId, experienceId, data);
   }
 
   async getExperienceValidationStats(agentId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Getting validation stats for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${agentId}/experiences/validation-stats`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getExperienceValidationStats(${agentId})`);
+    return agentMethods.getExperienceValidationStats(this._helpers, agentId);
   }
 
   async decayAllExperiences(params?: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Decaying all experiences`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/maintenance/decay-all-experiences', params || {});
-      return this.unwrapApiData<any>(response.data);
-    }, 'decayAllExperiences');
+    return agentMethods.decayAllExperiences(this._helpers, params);
   }
 
-  // ---- Adaptive Capabilities ----
-
   async suggestCapabilityAdaptation(agentId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Suggesting capability adaptation for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${agentId}/adapt-capabilities`);
-      return this.unwrapApiData<any>(response.data);
-    }, `suggestCapabilityAdaptation(${agentId})`);
+    return agentMethods.suggestCapabilityAdaptation(this._helpers, agentId);
   }
 
   async applyCapabilityAdaptation(agentId: number, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Applying capability adaptation for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${agentId}/adapt-capabilities`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `applyCapabilityAdaptation(${agentId})`);
+    return agentMethods.applyCapabilityAdaptation(this._helpers, agentId, data);
   }
 
-  // ---- Cross-Project Task Discovery & Assignment ----
-
   async findCrossProjectTasks(agentId: number, params?: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Finding cross-project tasks for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${agentId}/cross-project-tasks`, {
-        params: this.compactParams(params || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, `findCrossProjectTasks(${agentId})`);
+    return taskMethods.findCrossProjectTasks(this._helpers, agentId, params);
   }
 
   async claimCrossProjectTask(agentId: number, taskId: number, data?: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Agent ${agentId} claiming cross-project task ${taskId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${agentId}/claim-cross-project-task/${taskId}`, data || {});
-      return this.unwrapApiData<any>(response.data);
-    }, `claimCrossProjectTask(${agentId}, ${taskId})`);
+    return taskMethods.claimCrossProjectTask(this._helpers, agentId, taskId, data);
   }
 
-  // ---- Protocol Analytics & Deliberation ----
-
   async getProtocolAnalytics(params?: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Getting protocol analytics`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/protocols/analytics', {
-        params: this.compactParams(params || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getProtocolAnalytics');
+    return protocolMethods.getProtocolAnalytics(this._helpers, params);
   }
 
   async addDeliberationMessage(protocolId: number, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Adding deliberation message to protocol ${protocolId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/protocols/${protocolId}/deliberate`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `addDeliberationMessage(${protocolId})`);
+    return messagingMethods.addDeliberationMessage(this._helpers, protocolId, data);
   }
 
-  // ---- Increment 85: Agent collaboration sandbox ----
-
   async listSandboxes(params?: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Listing sandboxes`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/sandboxes', {
-        params: this.compactParams(params || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'listSandboxes');
+    return sandboxMethods.listSandboxes(this._helpers, params);
   }
 
   async createSandbox(data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Creating sandbox ${data?.name}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/sandboxes', data);
-      return this.unwrapApiData<any>(response.data);
-    }, 'createSandbox');
+    return sandboxMethods.createSandbox(this._helpers, data);
   }
 
   async getSandbox(sandboxId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Getting sandbox ${sandboxId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/sandboxes/${sandboxId}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getSandbox(${sandboxId})`);
+    return sandboxMethods.getSandbox(this._helpers, sandboxId);
   }
 
   async updateSandbox(sandboxId: number, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Updating sandbox ${sandboxId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.put(`agents/sandboxes/${sandboxId}`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `updateSandbox(${sandboxId})`);
+    return sandboxMethods.updateSandbox(this._helpers, sandboxId, data);
   }
 
   async deleteSandbox(sandboxId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Deleting sandbox ${sandboxId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.delete(`agents/sandboxes/${sandboxId}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `deleteSandbox(${sandboxId})`);
+    return sandboxMethods.deleteSandbox(this._helpers, sandboxId);
   }
 
   async bindAgentSandbox(agentId: number, data: { sandbox_id: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Binding sandbox ${data.sandbox_id} to agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/${agentId}/sandbox/bind`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `bindAgentSandbox(${agentId})`);
+    return agentMethods.bindAgentSandbox(this._helpers, agentId, data);
   }
 
   async getAgentSandbox(agentId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Getting sandbox for agent ${agentId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/${agentId}/sandbox`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getAgentSandbox(${agentId})`);
+    return agentMethods.getAgentSandbox(this._helpers, agentId);
   }
 
   async checkSandboxAction(sandboxId: number, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Checking sandbox action ${sandboxId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/sandboxes/${sandboxId}/check`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `checkSandboxAction(${sandboxId})`);
+    return sandboxMethods.checkSandboxAction(this._helpers, sandboxId, data);
   }
 
   async startSandboxExecution(sandboxId: number, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Starting sandbox execution for sandbox ${sandboxId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/sandboxes/${sandboxId}/executions`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `startSandboxExecution(${sandboxId})`);
+    return sandboxMethods.startSandboxExecution(this._helpers, sandboxId, data);
   }
 
   async completeSandboxExecution(executionId: number, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Completing sandbox execution ${executionId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/executions/${executionId}/complete`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `completeSandboxExecution(${executionId})`);
+    return sandboxMethods.completeSandboxExecution(this._helpers, executionId, data);
   }
 
   async revokeSandboxExecution(executionId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Revoking sandbox execution ${executionId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/executions/${executionId}/revoke`, {});
-      return this.unwrapApiData<any>(response.data);
-    }, `revokeSandboxExecution(${executionId})`);
+    return sandboxMethods.revokeSandboxExecution(this._helpers, executionId);
   }
 
   async reportSandboxViolation(executionId: number, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Reporting sandbox violation for execution ${executionId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/executions/${executionId}/violation`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `reportSandboxViolation(${executionId})`);
+    return sandboxMethods.reportSandboxViolation(this._helpers, executionId, data);
   }
 
   async getSandboxExecution(executionId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Getting sandbox execution ${executionId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/executions/${executionId}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getSandboxExecution(${executionId})`);
+    return sandboxMethods.getSandboxExecution(this._helpers, executionId);
   }
 
   async listSandboxExecutions(sandboxId: number, params?: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Listing sandbox executions for sandbox ${sandboxId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/sandboxes/${sandboxId}/executions`, {
-        params: this.compactParams(params || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, `listSandboxExecutions(${sandboxId})`);
+    return sandboxMethods.listSandboxExecutions(this._helpers, sandboxId, params);
   }
 
   async getSandboxDashboard(): Promise<any> {
-    logger.info(`[API_CLIENT] Getting sandbox dashboard`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/sandboxes/dashboard');
-      return this.unwrapApiData<any>(response.data);
-    }, 'getSandboxDashboard');
+    return sandboxMethods.getSandboxDashboard(this._helpers);
   }
 
   async getSandboxViolationTrend(args: { days?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting sandbox violation trend`);
-    const params: Record<string, string> = {};
-    if (args?.days) params.days = String(args.days);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/sandboxes/violation-trend', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getSandboxViolationTrend');
+    return sandboxMethods.getSandboxViolationTrend(this._helpers, args);
   }
 
   async getSandboxViolationsByAgent(args: { days?: number; limit?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting sandbox violations by agent`);
-    const params: Record<string, string> = {};
-    if (args?.days) params.days = String(args.days);
-    if (args?.limit) params.limit = String(args.limit);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/sandboxes/violations-by-agent', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getSandboxViolationsByAgent');
+    return agentMethods.getSandboxViolationsByAgent(this._helpers, args);
   }
 
   async getSandboxTemplateUsage(): Promise<any> {
-    logger.info(`[API_CLIENT] Getting sandbox template usage`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/sandboxes/template-usage');
-      return this.unwrapApiData<any>(response.data);
-    }, 'getSandboxTemplateUsage');
+    return sandboxMethods.getSandboxTemplateUsage(this._helpers);
   }
 
   async getStepSandboxExecution(runId: number, stepKey: string): Promise<any> {
-    logger.info(`[API_CLIENT] Getting sandbox execution for step ${stepKey} in run ${runId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/workflow-runs/${runId}/steps/${encodeURIComponent(stepKey)}/sandbox-execution`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getStepSandboxExecution(${runId},${stepKey})`);
+    return sandboxMethods.getStepSandboxExecution(this._helpers, runId, stepKey);
   }
 
   async reportStepSandboxViolation(runId: number, stepKey: string, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Reporting sandbox violation for step ${stepKey} in run ${runId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/workflow-runs/${runId}/steps/${encodeURIComponent(stepKey)}/sandbox-violation`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `reportStepSandboxViolation(${runId},${stepKey})`);
+    return sandboxMethods.reportStepSandboxViolation(this._helpers, runId, stepKey, data);
   }
 
   async setStepRuntimeOverride(runId: number, stepKey: string, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Setting runtime override for step ${stepKey} in run ${runId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.put(`agents/workflow-runs/${runId}/steps/${encodeURIComponent(stepKey)}/override`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `setStepRuntimeOverride(${runId},${stepKey})`);
+    return taskMethods.setStepRuntimeOverride(this._helpers, runId, stepKey, data);
   }
 
   async clearStepRuntimeOverride(runId: number, stepKey: string): Promise<any> {
-    logger.info(`[API_CLIENT] Clearing runtime override for step ${stepKey} in run ${runId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.delete(`agents/workflow-runs/${runId}/steps/${encodeURIComponent(stepKey)}/override`);
-      return this.unwrapApiData<any>(response.data);
-    }, `clearStepRuntimeOverride(${runId},${stepKey})`);
+    return taskMethods.clearStepRuntimeOverride(this._helpers, runId, stepKey);
   }
 
   async getStepEffectiveParams(runId: number, stepKey: string): Promise<any> {
-    logger.info(`[API_CLIENT] Getting effective params for step ${stepKey} in run ${runId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/workflow-runs/${runId}/steps/${encodeURIComponent(stepKey)}/effective-params`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getStepEffectiveParams(${runId},${stepKey})`);
+    return taskMethods.getStepEffectiveParams(this._helpers, runId, stepKey);
   }
 
-  // ---- Increment 89: Conflict detection & resolution ----
-
   async scanConflicts(): Promise<any> {
-    logger.info(`[API_CLIENT] Scanning for conflicts`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/conflicts/scan', {});
-      return this.unwrapApiData<any>(response.data);
-    }, 'scanConflicts');
+    return conflictMethods.scanConflicts(this._helpers);
   }
 
   async listConflicts(params?: Record<string, string>): Promise<any> {
-    logger.info(`[API_CLIENT] Listing conflicts`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/conflicts', {
-        params: this.compactParams(params || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'listConflicts');
+    return conflictMethods.listConflicts(this._helpers, params);
   }
 
   async getConflict(conflictId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Getting conflict ${conflictId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get(`agents/conflicts/${conflictId}`);
-      return this.unwrapApiData<any>(response.data);
-    }, `getConflict(${conflictId})`);
+    return conflictMethods.getConflict(this._helpers, conflictId);
   }
 
   async resolveConflict(conflictId: number, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Resolving conflict ${conflictId} with strategy ${data?.strategy}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/conflicts/${conflictId}/resolve`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `resolveConflict(${conflictId})`);
+    return conflictMethods.resolveConflict(this._helpers, conflictId, data);
   }
 
   async acknowledgeConflict(conflictId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Acknowledging conflict ${conflictId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/conflicts/${conflictId}/acknowledge`, {});
-      return this.unwrapApiData<any>(response.data);
-    }, `acknowledgeConflict(${conflictId})`);
+    return knowledgeMethods.acknowledgeConflict(this._helpers, conflictId);
   }
 
   async ignoreConflict(conflictId: number): Promise<any> {
-    logger.info(`[API_CLIENT] Ignoring conflict ${conflictId}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/conflicts/${conflictId}/ignore`, {});
-      return this.unwrapApiData<any>(response.data);
-    }, `ignoreConflict(${conflictId})`);
+    return conflictMethods.ignoreConflict(this._helpers, conflictId);
   }
 
   async getConflictsDashboard(): Promise<any> {
-    logger.info(`[API_CLIENT] Getting conflicts dashboard`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/conflicts/dashboard');
-      return this.unwrapApiData<any>(response.data);
-    }, 'getConflictsDashboard');
+    return conflictMethods.getConflictsDashboard(this._helpers);
   }
 
   async getConflictsTrend(args: { days?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting conflicts trend`);
-    const params: Record<string, string> = {};
-    if (args?.days) params.days = String(args.days);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/conflicts/trend', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getConflictsTrend');
+    return conflictMethods.getConflictsTrend(this._helpers, args);
   }
 
   async getConflictsByAgent(args: { limit?: number }): Promise<any> {
-    logger.info(`[API_CLIENT] Getting conflicts by agent`);
-    const params: Record<string, string> = {};
-    if (args?.limit) params.limit = String(args.limit);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/conflicts/by-agent', { params });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getConflictsByAgent');
+    return agentMethods.getConflictsByAgent(this._helpers, args);
   }
 
   async getConflictsStrategyStats(): Promise<any> {
-    logger.info(`[API_CLIENT] Getting conflicts strategy stats`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/conflicts/strategy-stats');
-      return this.unwrapApiData<any>(response.data);
-    }, 'getConflictsStrategyStats');
+    return conflictMethods.getConflictsStrategyStats(this._helpers);
   }
 
   async listSandboxTemplates(): Promise<any> {
-    logger.info(`[API_CLIENT] Listing sandbox templates`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/sandbox-templates');
-      return this.unwrapApiData<any>(response.data);
-    }, 'listSandboxTemplates');
+    return sandboxMethods.listSandboxTemplates(this._helpers);
   }
 
   async instantiateSandboxTemplate(templateKey: string, data: Record<string, any>): Promise<any> {
-    logger.info(`[API_CLIENT] Instantiating sandbox template ${templateKey}`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post(`agents/sandbox-templates/${encodeURIComponent(templateKey)}/instantiate`, data);
-      return this.unwrapApiData<any>(response.data);
-    }, `instantiateSandboxTemplate(${templateKey})`);
+    return sandboxMethods.instantiateSandboxTemplate(this._helpers, templateKey, data);
   }
 
   async autoResolveConflicts(): Promise<any> {
-    logger.info(`[API_CLIENT] Auto-resolving conflicts`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/maintenance/auto-resolve-conflicts', {});
-      return this.unwrapApiData<any>(response.data);
-    }, 'autoResolveConflicts');
+    return conflictMethods.autoResolveConflicts(this._helpers);
   }
 
-  /**
-   * Global collaboration orchestrator: full maintenance cycle in one call.
-   */
   async orchestrate(): Promise<any> {
-    logger.info(`[API_CLIENT] Running global orchestration`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.post('agents/maintenance/orchestrate', {});
-      return this.unwrapApiData<any>(response.data);
-    }, 'orchestrate');
+    return orchestratorMethods.orchestrate(this._helpers);
   }
 
-  /**
-   * Built-in orchestrator scheduler state + last run summary.
-   */
   async getOrchestratorStatus(): Promise<any> {
-    logger.info(`[API_CLIENT] Getting orchestrator status`);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/maintenance/orchestrator/status');
-      return this.unwrapApiData<any>(response.data);
-    }, 'getOrchestratorStatus');
+    return orchestratorMethods.getOrchestratorStatus(this._helpers);
   }
 
-  /**
-   * Recent orchestration run records + trend aggregates.
-   */
   async listOrchestratorHistory(args?: { limit?: number; triggered_by?: string }): Promise<any> {
-    logger.info('[API_CLIENT] Listing orchestrator history', args);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/maintenance/orchestrator/history', {
-        params: this.compactParams(args || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'listOrchestratorHistory');
+    return orchestratorMethods.listOrchestratorHistory(this._helpers, args);
   }
 
   async orchestratorDailyTrend(args?: { triggered_by?: string; since?: string; until?: string }): Promise<any> {
-    logger.info('[API_CLIENT] Fetching orchestrator daily trend', args);
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/maintenance/orchestrator/daily-trend', {
-        params: this.compactParams(args || {}),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'orchestratorDailyTrend');
+    return orchestratorMethods.orchestratorDailyTrend(this._helpers, args);
   }
 
   async getTaskDependencyChain(limit = 10, projectId?: number): Promise<any> {
-    logger.info('[API_CLIENT] Getting task dependency chain', { limit, projectId });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/dependency-chain', {
-        params: this.compactParams({ limit, project_id: projectId }),
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskDependencyChain');
+    return taskMethods.getTaskDependencyChain(this._helpers, limit = 10, projectId);
   }
 
   async getAgentSkillMatching(limit = 10): Promise<any> {
-    logger.info('[API_CLIENT] Getting agent skill matching', { limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/skill-matching', {
-        params: { limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentSkillMatching');
+    return agentMethods.getAgentSkillMatching(this._helpers, limit = 10);
   }
 
   async getWorkflowStepDurationHistogram(days = 30, limit = 10): Promise<any> {
-    logger.info('[API_CLIENT] Getting workflow step duration histogram', { days, limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/step-duration-histogram', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowStepDurationHistogram');
+    return workflowMethods.getWorkflowStepDurationHistogram(this._helpers, days = 30, limit = 10);
   }
 
   async getTaskCommentSentimentTrend(days = 30): Promise<any> {
-    logger.info('[API_CLIENT] Getting task comment sentiment trend', { days });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/comment-sentiment-trend', {
-        params: { days },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskCommentSentimentTrend');
+    return taskMethods.getTaskCommentSentimentTrend(this._helpers, days = 30);
   }
 
   async getAgentTaskHandoffStats(days = 30, limit = 10): Promise<any> {
-    logger.info('[API_CLIENT] Getting agent task handoff stats', { days, limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/task-handoff-stats', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentTaskHandoffStats');
+    return agentMethods.getAgentTaskHandoffStats(this._helpers, days = 30, limit = 10);
   }
 
   async getChannelActivityTrend(days = 14, limit = 10): Promise<any> {
-    logger.info('[API_CLIENT] Getting channel activity trend', { days, limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/channels/activity-trend', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getChannelActivityTrend');
+    return messagingMethods.getChannelActivityTrend(this._helpers, days = 14, limit = 10);
   }
 
   async getAgentWorkloadForecast(days = 30, horizon = 3, limit = 10): Promise<any> {
-    logger.info('[API_CLIENT] Getting agent workload forecast', { days, horizon, limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workload-forecast', {
-        params: { days, horizon, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentWorkloadForecast');
+    return agentMethods.getAgentWorkloadForecast(this._helpers, days = 30, horizon = 3, limit = 10);
   }
 
   async getKnowledgePropagationNetwork(days = 90, limit = 20): Promise<any> {
-    logger.info('[API_CLIENT] Getting knowledge propagation network', { days, limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/knowledge-propagation-network', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getKnowledgePropagationNetwork');
+    return knowledgeMethods.getKnowledgePropagationNetwork(this._helpers, days = 90, limit = 20);
   }
 
   async getWorkflowStepBottleneckTimeline(days = 30, limit = 8): Promise<any> {
-    logger.info('[API_CLIENT] Getting workflow step bottleneck timeline', { days, limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/step-bottleneck-timeline', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowStepBottleneckTimeline');
+    return workflowMethods.getWorkflowStepBottleneckTimeline(this._helpers, days = 30, limit = 8);
   }
 
   async getProtocolDecisionLatency(days = 30): Promise<any> {
-    logger.info('[API_CLIENT] Getting protocol decision latency', { days });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/protocol-decision-latency', {
-        params: { days },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getProtocolDecisionLatency');
+    return protocolMethods.getProtocolDecisionLatency(this._helpers, days = 30);
   }
 
   async getTaskReworkAnalysis(days = 30, limit = 15): Promise<any> {
-    logger.info('[API_CLIENT] Getting task rework analysis', { days, limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('tasks/rework-analysis', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getTaskReworkAnalysis');
+    return taskMethods.getTaskReworkAnalysis(this._helpers, days = 30, limit = 15);
   }
 
   async getAgentSpecializationEvolution(weeks = 12, limit = 8): Promise<any> {
-    logger.info('[API_CLIENT] Getting agent specialization evolution', { weeks, limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/specialization-evolution', {
-        params: { weeks, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentSpecializationEvolution');
+    return agentMethods.getAgentSpecializationEvolution(this._helpers, weeks = 12, limit = 8);
   }
 
   async getAgentExperiencesDecayAlerts(days = 30, minDrop = 0.1, limit = 10): Promise<any> {
-    logger.info('[API_CLIENT] Getting agent experiences decay alerts', { days, minDrop, limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/experiences/decay-alerts', {
-        params: { days, min_drop: minDrop, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentExperiencesDecayAlerts');
+    return agentMethods.getAgentExperiencesDecayAlerts(this._helpers, days = 30, minDrop = 0.1, limit = 10);
   }
 
   async getAgentCrossProjectEfficiency(days = 30, limit = 20): Promise<any> {
-    logger.info('[API_CLIENT] Getting agent cross-project efficiency', { days, limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/cross-project-efficiency', {
-        params: { days, limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentCrossProjectEfficiency');
+    return agentMethods.getAgentCrossProjectEfficiency(this._helpers, days = 30, limit = 20);
   }
 
   async getAgentCapabilitySupplyDemand(limit = 20): Promise<any> {
-    logger.info('[API_CLIENT] Getting agent capability supply-demand', { limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/capability-supply-demand', {
-        params: { limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentCapabilitySupplyDemand');
+    return agentMethods.getAgentCapabilitySupplyDemand(this._helpers, limit = 20);
   }
 
   async getWorkflowStructuralComplexity(limit = 20): Promise<any> {
-    logger.info('[API_CLIENT] Getting workflow structural complexity', { limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/workflows/structural-complexity', {
-        params: { limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getWorkflowStructuralComplexity');
+    return workflowMethods.getWorkflowStructuralComplexity(this._helpers, limit = 20);
   }
 
   async getAgentIdleRanking(limit = 20): Promise<any> {
-    logger.info('[API_CLIENT] Getting agent idle ranking', { limit });
-    return this.executeWithRetry(async () => {
-      const response = await this.client.get('agents/idle-ranking', {
-        params: { limit },
-      });
-      return this.unwrapApiData<any>(response.data);
-    }, 'getAgentIdleRanking');
+    return agentMethods.getAgentIdleRanking(this._helpers, limit = 20);
   }
 
-  /**
-   * Test connection to the Todo API
-   */
   async testConnection(): Promise<boolean> {
-    try {
-      logger.info('Testing connection to Todo API...');
-      const response = await this.client.get('/health');
-      logger.info('Connection test successful');
-      return true;
-    } catch (error) {
-      logger.error('Connection test failed:', error);
-      return false;
-    }
+    return taskMethods.testConnection(this._helpers);
   }
 
   private getVersion(): string {
@@ -3251,7 +1334,7 @@ export class TodoApiClient {
         join(__dirname, '../../../package.json'),
         join(process.cwd(), 'package.json')
       ];
-      
+
       for (const path of possiblePaths) {
         try {
           const packageJson = JSON.parse(readFileSync(path, 'utf-8'));
@@ -3262,7 +1345,7 @@ export class TodoApiClient {
           // Continue to next path
         }
       }
-      
+
       logger.warn('Could not read package version from any path');
       return '1.0.8'; // Use current version as fallback
     } catch (error) {
