@@ -57,7 +57,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { MethodHelpers } from './api-client/context.js';
 
-import * as taskMethods from './api-client/task-methods.js';
+import * as taskMethods from './api-client/task-methods/index.js';
 import * as agentMethods from './api-client/agent-methods/index.js';
 import * as workflowMethods from './api-client/workflow-methods.js';
 import * as knowledgeMethods from './api-client/knowledge-methods.js';
