@@ -45,6 +45,53 @@ export const toolsPart1: Tool[] = [
           },
         },
         {
+          name: 'get_task_evidence',
+          description: "Get a task's Definition of Done (DoD) and verification evidence (test/build/lint results, linked pull requests) submitted by agents",
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task_id: {
+                type: 'integer',
+                description: 'The ID of the task',
+              },
+            },
+            required: ['task_id'],
+          },
+        },
+        {
+          name: 'set_task_dod',
+          description: "Set a task's Definition of Done: machine-checkable acceptance criteria (test/build/lint/command) that an agent must satisfy with evidence before the task can be marked done",
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task_id: {
+                type: 'integer',
+                description: 'The ID of the task',
+              },
+              dod: {
+                type: 'array',
+                description: 'DoD criteria list; submit an empty array to clear',
+                items: {
+                  type: 'object',
+                  properties: {
+                    type: {
+                      type: 'string',
+                      enum: ['test', 'build', 'lint', 'command', 'pr', 'manual'],
+                      description: 'Criterion type',
+                    },
+                    value: {
+                      type: 'string',
+                      description: "The check itself, e.g. 'pytest -q'",
+                    },
+                  },
+                  required: ['type', 'value'],
+                },
+              },
+            },
+            required: ['task_id', 'dod'],
+          },
+        },
+        {
           name: 'submit_task_feedback',
           description: 'Submit feedback for a completed or in-progress task',
           inputSchema: {

@@ -29,6 +29,32 @@ export const taskHandlers: HandlerMap = {
     };
   },
 
+  'get_task_evidence': async (args, ctx) => {
+    const result = await ctx.apiClient.getTaskEvidence(args);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  },
+
+  'set_task_dod': async (args, ctx) => {
+    const result = await ctx.apiClient.setTaskDod(args);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  },
+
   'submit_task_feedback': async (args, ctx) => {
     const result = await ctx.apiClient.submitTaskFeedback(args);
 

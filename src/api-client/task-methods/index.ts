@@ -8,6 +8,8 @@
 export {
   getProjectTasksByName,
   getTaskById,
+  getTaskEvidence,
+  setTaskDod,
   submitTaskFeedback,
   createTask,
   getProjectInfo,

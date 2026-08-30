@@ -17,6 +17,9 @@ import type {
   GetRunLogsResult,
   GetSharedContextArgs,
   GetTaskByIdArgs,
+  GetTaskEvidenceArgs,
+  SetTaskDodArgs,
+  TaskEvidenceResult,
   HandoffTaskArgs,
   HandoffTaskResult,
   InstantiateTaskTemplateArgs,
@@ -598,4 +601,49 @@ export async function testConnection(helpers: MethodHelpers): Promise<boolean> {
     logger.error('Connection test failed:', error);
     return false;
   }
+}
+
+export async function getTaskEvidence(helpers: MethodHelpers, args: GetTaskEvidenceArgs): Promise<TaskEvidenceResult> {
+  logger.info(`Getting task evidence for ID: ${args.task_id}`);
+
+  return helpers.executeWithRetry(async () => {
+    const response = await helpers.client.post<any>('mcp/call', {
+      name: 'get_task_evidence',
+      arguments: {
+        task_id: args.task_id,
+      },
+    });
+
+    const result = response.data;
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    logger.info(`Retrieved ${result.evidence?.length || 0} evidence items for task ${args.task_id}`);
+    return result as TaskEvidenceResult;
+  }, `getTaskEvidence(${args.task_id})`);
+}
+
+export async function setTaskDod(helpers: MethodHelpers, args: SetTaskDodArgs): Promise<any> {
+  logger.info(`Setting DoD for task ${args.task_id} (${args.dod.length} criteria)`);
+
+  return helpers.executeWithRetry(async () => {
+    const response = await helpers.client.post<any>('mcp/call', {
+      name: 'set_task_dod',
+      arguments: {
+        task_id: args.task_id,
+        dod: args.dod,
+      },
+    });
+
+    const result = response.data;
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    logger.info(`DoD updated for task ${args.task_id}`);
+    return result;
+  }, `setTaskDod(${args.task_id})`);
 }

@@ -103,6 +103,37 @@ export interface GetTaskByIdArgs {
   task_id: number;
 }
 
+export interface GetTaskEvidenceArgs {
+  task_id: number;
+}
+
+export interface TaskDodCriterion {
+  type: 'test' | 'build' | 'lint' | 'command' | 'pr' | 'manual';
+  value: string;
+}
+
+export interface SetTaskDodArgs {
+  task_id: number;
+  dod: TaskDodCriterion[];
+}
+
+export interface TaskEvidenceItem {
+  id: number;
+  evidence_type: 'test' | 'build' | 'lint' | 'command' | 'pr' | 'manual';
+  status: 'passed' | 'failed' | 'unknown';
+  summary?: string | null;
+  url?: string | null;
+  attempt_id?: string | null;
+  created_at?: string | null;
+}
+
+export interface TaskEvidenceResult {
+  task_id: number;
+  task_status?: string | null;
+  dod: TaskDodCriterion[];
+  evidence: TaskEvidenceItem[];
+}
+
 export interface SubmitTaskFeedbackArgs {
   task_id: number;
   project_name: string;

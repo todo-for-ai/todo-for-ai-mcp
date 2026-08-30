@@ -5,6 +5,9 @@ import {
   ApiError,
   GetProjectTasksArgs,
   GetTaskByIdArgs,
+  GetTaskEvidenceArgs,
+  SetTaskDodArgs,
+  TaskEvidenceResult,
   SubmitTaskFeedbackArgs,
   CreateTaskArgs,
   GetProjectInfoArgs,
@@ -375,6 +378,14 @@ export class TodoApiClient {
 
   async getTaskById(args: GetTaskByIdArgs): Promise<Task> {
     return taskMethods.getTaskById(this._helpers, args);
+  }
+
+  async getTaskEvidence(args: GetTaskEvidenceArgs): Promise<TaskEvidenceResult> {
+    return taskMethods.getTaskEvidence(this._helpers, args);
+  }
+
+  async setTaskDod(args: SetTaskDodArgs): Promise<any> {
+    return taskMethods.setTaskDod(this._helpers, args);
   }
 
   async submitTaskFeedback(args: SubmitTaskFeedbackArgs): Promise<any> {
