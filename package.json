@@ -1,7 +1,7 @@
 {
   "name": "@todo-for-ai/mcp",
-  "version": "1.1.0",
-  "description": "Model Context Protocol server for Todo for AI task management system. Provides AI assistants with access to task management, project information, and feedback submission capabilities.",
+  "version": "2.1.5",
+  "description": "Model Context Protocol server for Todo for AI task management system with Streamable HTTP transport. Provides AI assistants with access to task management, project information, and feedback submission capabilities through modern HTTP-based communication.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -16,6 +16,7 @@
     }
   },
   "scripts": {
+    "prebuild": "node scripts/update-version.js",
     "build": "npm run clean && tsc",
     "build:watch": "tsc --watch",
     "clean": "rm -rf lib",
@@ -31,6 +32,8 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
+    "streamable-http",
+    "http-transport",
     "todo",
     "ai",
     "task-management",
@@ -39,10 +42,12 @@
     "assistant",
     "automation",
     "typescript",
-    "api-client"
+    "api-client",
+    "sse",
+    "server-sent-events"
   ],
   "author": "Todo for AI Team",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/todo-for-ai/todo-for-ai.git",
@@ -53,12 +58,16 @@
     "access": "public"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.5.0",
-    "axios": "^1.7.0",
-    "dotenv": "^16.4.0"
+    "@modelcontextprotocol/sdk": "^1.17.2",
+    "axios": "1.11.0",
+    "dotenv": "^16.4.0",
+    "express": "^5.0.1",
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/express": "^5.0.0",
+    "@types/cors": "^2.8.17",
     "tsx": "^4.0.0",
     "typescript": "^5.9.0"
   },
