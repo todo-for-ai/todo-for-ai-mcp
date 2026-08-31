@@ -1,6 +1,6 @@
 {
   "name": "@todo-for-ai/mcp",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "description": "Model Context Protocol server for Todo for AI task management system with Streamable HTTP transport. Provides AI assistants with access to task management, project information, and feedback submission capabilities through modern HTTP-based communication.",
   "type": "module",
   "main": "lib/index.js",
@@ -22,7 +22,10 @@
     "clean": "rm -rf lib",
     "dev": "tsx src/index.ts",
     "start": "node lib/index.js",
-    "test": "echo \"No tests specified\" && exit 0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
     "lint": "echo \"Linting skipped - no ESLint config\" && exit 0",
     "lint:fix": "echo \"Linting skipped - no ESLint config\" && exit 0",
     "typecheck": "tsc --noEmit",
@@ -59,7 +62,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.2",
-    "axios": "1.11.0",
+    "axios": "^1.7.7",
     "dotenv": "^16.4.0",
     "express": "^5.0.1",
     "cors": "^2.8.5"
@@ -68,8 +71,13 @@
     "@types/node": "^20.0.0",
     "@types/express": "^5.0.0",
     "@types/cors": "^2.8.17",
+    "@types/supertest": "^6.0.0",
+    "@vitest/coverage-v8": "^1.2.0",
+    "@vitest/ui": "^1.2.0",
+    "supertest": "^6.3.3",
     "tsx": "^4.0.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^1.2.0"
   },
   "engines": {
     "node": ">=18.0.0"
