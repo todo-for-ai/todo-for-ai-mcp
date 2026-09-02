@@ -134,6 +134,39 @@ export interface TaskEvidenceResult {
   evidence: TaskEvidenceItem[];
 }
 
+export interface ListMyTasksArgs {
+  status_filter?: ('todo' | 'in_progress' | 'review' | 'done' | 'cancelled')[];
+  project_id?: number;
+  limit?: number;
+}
+
+export interface SearchTasksArgs {
+  keyword: string;
+  project_id?: number;
+  status?: 'todo' | 'in_progress' | 'review' | 'done' | 'cancelled';
+  limit?: number;
+}
+
+export interface UpdateTaskStatusArgs {
+  task_id: number;
+  status: 'todo' | 'in_progress' | 'review' | 'done' | 'cancelled';
+  expected_revision?: number;
+}
+
+export interface ReportProgressArgs {
+  task_id: number;
+  content: string;
+  content_type?: string;
+}
+
+export interface RequestApprovalArgs {
+  task_id: number;
+  question: string;
+  interaction_type?: string;
+  sensitivity_level?: 'low' | 'medium' | 'high' | 'critical';
+  options?: string[];
+}
+
 export interface SubmitTaskFeedbackArgs {
   task_id: number;
   project_name: string;

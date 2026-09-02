@@ -55,6 +55,71 @@ export const taskHandlers: HandlerMap = {
     };
   },
 
+  'list_my_tasks': async (args, ctx) => {
+    const result = await ctx.apiClient.listMyTasks(args);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  },
+
+  'search_tasks': async (args, ctx) => {
+    const result = await ctx.apiClient.searchTasks(args);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  },
+
+  'update_task_status': async (args, ctx) => {
+    const result = await ctx.apiClient.updateTaskStatus(args);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  },
+
+  'report_progress': async (args, ctx) => {
+    const result = await ctx.apiClient.reportProgress(args);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  },
+
+  'request_approval': async (args, ctx) => {
+    const result = await ctx.apiClient.requestApproval(args);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  },
+
   'submit_task_feedback': async (args, ctx) => {
     const result = await ctx.apiClient.submitTaskFeedback(args);
 

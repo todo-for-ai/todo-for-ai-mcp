@@ -92,6 +92,140 @@ export const toolsPart1: Tool[] = [
           },
         },
         {
+          name: 'list_my_tasks',
+          description: 'List tasks relevant to you (created by, owned by, in your projects, or assigned to you). Entry point to discover work',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              status_filter: {
+                type: 'array',
+                items: {
+                  type: 'string',
+                  enum: ['todo', 'in_progress', 'review', 'done', 'cancelled'],
+                  description: 'Status values to include',
+                },
+                description: 'Filter tasks by status (default: todo, in_progress, review)',
+              },
+              project_id: {
+                type: 'integer',
+                description: 'Restrict to one project (optional)',
+              },
+              limit: {
+                type: 'integer',
+                description: 'Max tasks returned (default 50, max 200)',
+              },
+            },
+            required: [],
+          },
+        },
+        {
+          name: 'search_tasks',
+          description: "Search accessible tasks by keyword in title or content",
+          inputSchema: {
+            type: 'object',
+            properties: {
+              keyword: {
+                type: 'string',
+                description: 'Keyword to search in task title/content',
+              },
+              project_id: {
+                type: 'integer',
+                description: 'Restrict to one project (optional)',
+              },
+              status: {
+                type: 'string',
+                enum: ['todo', 'in_progress', 'review', 'done', 'cancelled'],
+                description: 'Filter by a single status (optional)',
+              },
+              limit: {
+                type: 'integer',
+                description: 'Max tasks returned (default 50, max 200)',
+              },
+            },
+            required: ['keyword'],
+          },
+        },
+        {
+          name: 'update_task_status',
+          description: "Update a task's status (todo/in_progress/review/done/cancelled). Pass expected_revision to guard against concurrent edits",
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task_id: {
+                type: 'integer',
+                description: 'The ID of the task',
+              },
+              status: {
+                type: 'string',
+                enum: ['todo', 'in_progress', 'review', 'done', 'cancelled'],
+                description: 'The new status',
+              },
+              expected_revision: {
+                type: 'integer',
+                description: 'Optimistic concurrency guard: reject the update if the task revision differs (optional)',
+              },
+            },
+            required: ['task_id', 'status'],
+          },
+        },
+        {
+          name: 'report_progress',
+          description: 'Append a progress log entry to a task (append-only task log) to keep humans informed while working',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task_id: {
+                type: 'integer',
+                description: 'The ID of the task',
+              },
+              content: {
+                type: 'string',
+                description: 'Progress note in markdown (what was done, current state, next steps)',
+              },
+              content_type: {
+                type: 'string',
+                description: 'Content type, default text/markdown',
+              },
+            },
+            required: ['task_id', 'content'],
+          },
+        },
+        {
+          name: 'request_approval',
+          description: 'Ask the human to decide something about a task (destructive operation, budget, scope change). The request enters the workspace approval queue for owner/admin to approve or reject',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task_id: {
+                type: 'integer',
+                description: 'The ID of the task this request is about',
+              },
+              question: {
+                type: 'string',
+                description: 'What you are asking for and why (shown to the approver)',
+              },
+              interaction_type: {
+                type: 'string',
+                description: 'Short type tag, e.g. human_approval / permission_request / budget_request (default: human_approval)',
+              },
+              sensitivity_level: {
+                type: 'string',
+                enum: ['low', 'medium', 'high', 'critical'],
+                description: 'How sensitive the requested action is (default: medium)',
+              },
+              options: {
+                type: 'array',
+                items: {
+                  type: 'string',
+                  description: 'A decision option to present to the approver',
+                },
+                description: 'Optional decision options (max 10)',
+              },
+            },
+            required: ['task_id', 'question'],
+          },
+        },
+        {
           name: 'submit_task_feedback',
           description: 'Submit feedback for a completed or in-progress task',
           inputSchema: {

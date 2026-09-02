@@ -18,8 +18,13 @@ import type {
   GetSharedContextArgs,
   GetTaskByIdArgs,
   GetTaskEvidenceArgs,
+  ListMyTasksArgs,
+  ReportProgressArgs,
+  RequestApprovalArgs,
+  SearchTasksArgs,
   SetTaskDodArgs,
   TaskEvidenceResult,
+  UpdateTaskStatusArgs,
   HandoffTaskArgs,
   HandoffTaskResult,
   InstantiateTaskTemplateArgs,
@@ -646,4 +651,127 @@ export async function setTaskDod(helpers: MethodHelpers, args: SetTaskDodArgs): 
     logger.info(`DoD updated for task ${args.task_id}`);
     return result;
   }, `setTaskDod(${args.task_id})`);
+}
+
+export async function listMyTasks(helpers: MethodHelpers, args: ListMyTasksArgs = {}): Promise<any> {
+  logger.info('Listing my tasks');
+
+  return helpers.executeWithRetry(async () => {
+    const response = await helpers.client.post<any>('mcp/call', {
+      name: 'list_my_tasks',
+      arguments: {
+        ...(args.status_filter && { status_filter: args.status_filter }),
+        ...(args.project_id !== undefined && { project_id: args.project_id }),
+        ...(args.limit !== undefined && { limit: args.limit }),
+      },
+    });
+
+    const result = response.data;
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    logger.info(`Retrieved ${result.total_tasks ?? result.tasks?.length ?? 0} tasks`);
+    return result;
+  }, 'listMyTasks()');
+}
+
+export async function searchTasks(helpers: MethodHelpers, args: SearchTasksArgs): Promise<any> {
+  logger.info(`Searching tasks: ${args.keyword}`);
+
+  return helpers.executeWithRetry(async () => {
+    const response = await helpers.client.post<any>('mcp/call', {
+      name: 'search_tasks',
+      arguments: {
+        keyword: args.keyword,
+        ...(args.project_id !== undefined && { project_id: args.project_id }),
+        ...(args.status && { status: args.status }),
+        ...(args.limit !== undefined && { limit: args.limit }),
+      },
+    });
+
+    const result = response.data;
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    logger.info(`Found ${result.total_tasks ?? 0} tasks for keyword "${args.keyword}"`);
+    return result;
+  }, `searchTasks(${args.keyword})`);
+}
+
+export async function updateTaskStatus(helpers: MethodHelpers, args: UpdateTaskStatusArgs): Promise<any> {
+  logger.info(`Updating task ${args.task_id} status to ${args.status}`);
+
+  return helpers.executeWithRetry(async () => {
+    const response = await helpers.client.post<any>('mcp/call', {
+      name: 'update_task_status',
+      arguments: {
+        task_id: args.task_id,
+        status: args.status,
+        ...(args.expected_revision !== undefined && { expected_revision: args.expected_revision }),
+      },
+    });
+
+    const result = response.data;
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    logger.info(`Task ${args.task_id} status updated: ${result.old_status} -> ${result.status}`);
+    return result;
+  }, `updateTaskStatus(${args.task_id})`);
+}
+
+export async function reportProgress(helpers: MethodHelpers, args: ReportProgressArgs): Promise<any> {
+  logger.info(`Reporting progress for task ${args.task_id}`);
+
+  return helpers.executeWithRetry(async () => {
+    const response = await helpers.client.post<any>('mcp/call', {
+      name: 'report_progress',
+      arguments: {
+        task_id: args.task_id,
+        content: args.content,
+        ...(args.content_type && { content_type: args.content_type }),
+      },
+    });
+
+    const result = response.data;
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    logger.info(`Progress log ${result.log_id} appended to task ${args.task_id}`);
+    return result;
+  }, `reportProgress(${args.task_id})`);
+}
+
+export async function requestApproval(helpers: MethodHelpers, args: RequestApprovalArgs): Promise<any> {
+  logger.info(`Requesting approval for task ${args.task_id}`);
+
+  return helpers.executeWithRetry(async () => {
+    const response = await helpers.client.post<any>('mcp/call', {
+      name: 'request_approval',
+      arguments: {
+        task_id: args.task_id,
+        question: args.question,
+        ...(args.interaction_type && { interaction_type: args.interaction_type }),
+        ...(args.sensitivity_level && { sensitivity_level: args.sensitivity_level }),
+        ...(args.options && { options: args.options }),
+      },
+    });
+
+    const result = response.data;
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    logger.info(`Approval request ${result.interaction_id} created (${result.status})`);
+    return result;
+  }, `requestApproval(${args.task_id})`);
 }

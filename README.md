@@ -717,6 +717,37 @@ Update a task assignment as the current user or coordinator. Use this with items
 }
 ```
 
+### 17. External Agent Work Loop
+
+Five tools that let an external agent (Claude Code, Cursor, any MCP client) drive the full task loop with its own API token — discover work, work it, report, ask for decisions, finish:
+
+| Tool | Purpose | Required args |
+|---|---|---|
+| `list_my_tasks` | Tasks created by / owned by / assigned to the token user (entry point) | — |
+| `search_tasks` | Keyword search in title/content of accessible tasks | `keyword` |
+| `update_task_status` | Move task status; `expected_revision` guards concurrent edits; warns (non-blocking) when marking `done` with unmet DoD criteria | `task_id`, `status` |
+| `report_progress` | Append a markdown progress note to the append-only task log | `task_id`, `content` |
+| `request_approval` | Ask a human to decide (destructive op / budget / scope change); lands in the workspace approval queue, resolved by workspace owner/admin | `task_id`, `question` |
+
+The DoD verification pair completes the loop: `set_task_dod` declares machine-checkable acceptance criteria and `get_task_evidence` reads submitted verification evidence (see the api-server DoD docs).
+
+**Typical loop:**
+
+```json
+// 1. discover
+{ "name": "list_my_tasks", "arguments": { "status_filter": ["todo"] } }
+// 2. start
+{ "name": "update_task_status", "arguments": { "task_id": 42, "status": "in_progress" } }
+// 3. keep humans informed
+{ "name": "report_progress", "arguments": { "task_id": 42, "content": "Core module done, tests green; wiring the CLI next" } }
+// 4. blocked on a human decision?
+{ "name": "request_approval", "arguments": { "task_id": 42, "question": "May I rotate the production API key?", "sensitivity_level": "high" } }
+// 5. finish
+{ "name": "update_task_status", "arguments": { "task_id": 42, "status": "review" } }
+```
+
+`request_approval` returns an `interaction_id`; humans approve/reject via `POST /workspaces/<workspace_id>/tasks/<task_id>/interactions/<interaction_id>/approval` or the Command Center approvals card.
+
 ## Development
 
 ### Prerequisites

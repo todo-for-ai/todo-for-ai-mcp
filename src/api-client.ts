@@ -6,7 +6,12 @@ import {
   GetProjectTasksArgs,
   GetTaskByIdArgs,
   GetTaskEvidenceArgs,
+  ListMyTasksArgs,
+  ReportProgressArgs,
+  RequestApprovalArgs,
+  SearchTasksArgs,
   SetTaskDodArgs,
+  UpdateTaskStatusArgs,
   TaskEvidenceResult,
   SubmitTaskFeedbackArgs,
   CreateTaskArgs,
@@ -386,6 +391,26 @@ export class TodoApiClient {
 
   async setTaskDod(args: SetTaskDodArgs): Promise<any> {
     return taskMethods.setTaskDod(this._helpers, args);
+  }
+
+  async listMyTasks(args: ListMyTasksArgs = {}): Promise<any> {
+    return taskMethods.listMyTasks(this._helpers, args);
+  }
+
+  async searchTasks(args: SearchTasksArgs): Promise<any> {
+    return taskMethods.searchTasks(this._helpers, args);
+  }
+
+  async updateTaskStatus(args: UpdateTaskStatusArgs): Promise<any> {
+    return taskMethods.updateTaskStatus(this._helpers, args);
+  }
+
+  async reportProgress(args: ReportProgressArgs): Promise<any> {
+    return taskMethods.reportProgress(this._helpers, args);
+  }
+
+  async requestApproval(args: RequestApprovalArgs): Promise<any> {
+    return taskMethods.requestApproval(this._helpers, args);
   }
 
   async submitTaskFeedback(args: SubmitTaskFeedbackArgs): Promise<any> {
