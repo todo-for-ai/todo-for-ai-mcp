@@ -293,13 +293,27 @@ export class HttpTransport extends BaseTransport {
       throw new Error('Express app not initialized');
     }
 
-    return new Promise((resolve, reject) => {
-      this.httpServer = this.app!.listen(this.config.port, this.config.host, () => {
-        resolve();
-      });
+    // 注意：app.listen() 立即返回服务器，macOS 等平台对绑定失败的
+    // 回调先于 error 事件触发——必须显式等待 'listening' 事件，
+    // 否则绑定失败（EADDRINUSE/EADDRNOTAVAIL）也会被报告为已启动。
+    this.httpServer = this.app.listen(this.config.port, this.config.host);
+    const server = this.httpServer;
 
-      this.httpServer.on('error', (error: any) => {
+    return new Promise((resolve, reject) => {
+      const onError = (error: any) => {
         reject(error);
+      };
+      server.once('error', onError);
+      server.once('listening', () => {
+        server.off('error', onError);
+        // 运行期错误只记录，避免未处理的 'error' 事件击穿进程
+        server.on('error', (e: any) => {
+          logger.error('[HTTP_TRANSPORT] HTTP server runtime error', {
+            code: e?.code,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        });
+        resolve();
       });
     });
   }
